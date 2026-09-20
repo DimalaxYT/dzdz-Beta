@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DropQR — transfert temporaire par QR code</title>
+  <link rel="stylesheet" href="/assets/app.css?v=10">
+</head>
+<body>
+  <div class="shell">
+    <nav class="topbar" aria-label="Navigation principale">
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=5" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <div class="nav-links">
+        <a class="active" href="/">Accueil</a>
+        <a href="/upload">Envoyer</a>
+        <a href="/receive">Recevoir</a>
+        <a href="/dashboard">Mes liens</a>
+        <a href="/help">Aide</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div>
+        <div class="eyebrow">QR code · Backend Express · Auto-suppression</div>
+        <h1>Transfère tes fichiers <span class="gradient-text">sans cloud permanent.</span></h1>
+        <p class="lead">DropQR crée un lien temporaire et un QR code. L’autre appareil scanne, télécharge, puis le backend supprime le fichier après le premier téléchargement ou à expiration.</p>
+        <div class="actions">
+          <a class="btn primary" href="/upload">Créer un transfert</a>
+          <a class="btn" href="/help#deploy">Voir comment le mettre en ligne</a>
+        </div>
+      </div>
+
+      <aside class="hero-card" aria-label="Résumé technique">
+        <h2 class="mini-title">Ce qui tourne côté serveur</h2>
+        <ul class="mini-list">
+          <li><span class="check">1</span><span>Upload streamé vers le disque serveur, pas en mémoire.</span></li>
+          <li><span class="check">2</span><span>Métadonnées stockées dans une petite base JSON locale.</span></li>
+          <li><span class="check">3</span><span>Nettoyage automatique toutes les minutes.</span></li>
+        </ul>
+      </aside>
+    </header>
+
+    <section class="feature-grid" aria-label="Fonctionnalités">
+      <article class="card feature-card">
+        <div class="pill">Upload avec progression</div>
+        <h3>Barre de progression réelle</h3>
+        <p>Le navigateur affiche le pourcentage, la vitesse et le temps restant pendant l’envoi.</p>
+      </article>
+      <article class="card feature-card">
+        <div class="pill">Nettoyage</div>
+        <h3>Pas de stockage inutile</h3>
+        <p>Chaque fichier a une durée de vie. Tu peux aussi supprimer manuellement depuis “Mes liens”.</p>
+      </article>
+      <article class="card feature-card">
+        <div class="pill">Multi-pages</div>
+        <h3>Un vrai mini-produit</h3>
+        <p>Accueil, page de transfert, page de suivi local, page d’aide et routes API backend.</p>
+      </article>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2 style="margin:0 0 10px;letter-spacing:-.04em">Important pour le QR code dans cette preview</h2>
+      <p style="margin:0;color:#cbd5e1;line-height:1.6">La preview Arena/e2b peut demander un header de sécurité nommé <code>e2b-traffic-access-token</code>. Un téléphone qui scanne le QR code n’a pas ce header, donc il peut afficher “Missing Traffic Access Token”. Ce n’est pas un bug de DropQR : pour scanner depuis un vrai téléphone, lance le site sur ton réseau local ou déploie-le sur un domaine public.</p>
+    </section>
+
+    <footer>
+      <span><strong>DropQR</strong> — fichiers temporaires, liens courts, QR code.</span>
+      <span><a href="/api/health">API health</a></span>
+    </footer>
+  </div>
+</body>
+</html>

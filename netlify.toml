@@ -1,0 +1,4 @@
+# Netlify peut afficher les pages statiques, mais ne lance pas le backend Express.
+# Pour DropQR complet avec upload/téléchargement, utilise Render, Railway, Fly.io ou un VPS.
+[build]
+  publish = "public"

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DropQR — envoyer et recevoir</title>
+  <link rel="stylesheet" href="/assets/app.css?v=10">
+</head>
+<body>
+  <div class="shell">
+    <nav class="topbar" aria-label="Navigation principale">
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=5" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <div class="nav-links">
+        <a class="active" href="/">Accueil</a>
+        <a href="/upload">Envoyer</a>
+        <a href="/receive">Recevoir</a>
+        <a href="/dashboard">Mes liens</a>
+        <a href="/help">Aide</a>
+      </div>
+    </nav>
+
+    <header class="hero clean-hero landing-hero">
+      <div class="hero-copy">
+        <div class="eyebrow">Fichiers et vidéos jusqu’à 10 Go</div>
+        <h1>Transfère vite. Reçois avec un code.</h1>
+        <p class="lead">DropQR envoie tes fichiers par morceaux parallèles, génère un code court et poste le QR dans Discord. Simple pour toi, clair pour la personne qui reçoit.</p>
+        <div class="actions">
+          <a class="btn primary" href="/upload">Envoyer maintenant</a>
+          <a class="btn" href="/receive">Recevoir un fichier</a>
+        </div>
+        <div class="trust-row" aria-label="Résumé des capacités">
+          <span>10 Go max</span>
+          <span>Upload parallèle</span>
+          <span>Vidéos lisibles</span>
+          <span>Discord auto</span>
+        </div>
+      </div>
+
+      <aside class="product-card" aria-label="Aperçu DropQR">
+        <div class="product-top">
+          <span class="status-dot"></span>
+          <span>Transfert prêt</span>
+        </div>
+        <div class="code-display">TD4CJGT</div>
+        <div class="mock-file">
+          <div class="mock-icon"></div>
+          <div>
+            <strong>vacances-video.mp4</strong>
+            <span>1.08 Go · expire dans 15 min</span>
+          </div>
+        </div>
+        <div class="mock-progress"><span style="width: 76%"></span></div>
+        <div class="product-actions">
+          <span>QR envoyé sur Discord</span>
+          <span>Message supprimé à expiration</span>
+        </div>
+      </aside>
+    </header>
+
+    <section class="feature-grid" aria-label="Fonctionnalités">
+      <article class="card feature-card">
+        <div class="pill">Rapide</div>
+        <h3>Envoi parallèle</h3>
+        <p>Les gros fichiers sont découpés et envoyés sur plusieurs flux pour mieux utiliser ta connexion.</p>
+      </article>
+      <article class="card feature-card">
+        <div class="pill">Recevoir</div>
+        <h3>Code court + QR</h3>
+        <p>Le destinataire entre un code ou scanne le QR pour arriver sur une page claire de réception.</p>
+      </article>
+      <article class="card feature-card">
+        <div class="pill">Vidéo</div>
+        <h3>Lecture intégrée</h3>
+        <p>Les vidéos peuvent être lues directement dans le navigateur avant téléchargement.</p>
+      </article>
+    </section>
+
+    <footer>
+      <span><strong>DropQR</strong> — fichier temporaire, code court, QR code.</span>
+      <span><a href="/api/health">Vérifier le backend</a></span>
+    </footer>
+  </div>
+</body>
+</html>

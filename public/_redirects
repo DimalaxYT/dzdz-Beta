@@ -1,0 +1,8 @@
+/api/* /api-not-available.html 404
+/download/* /api-not-available.html 404
+/t/* /api-not-available.html 404
+/upload /upload.html 200
+/dashboard /dashboard.html 200
+/help /help.html 200
+/ /index.html 200
+/* /index.html 200

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: dropqr
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DEFAULT_TTL_MINUTES
+        value: 15
+      - key: MAX_TTL_MINUTES
+        value: 1440
