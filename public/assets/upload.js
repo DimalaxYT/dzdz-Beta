@@ -115,31 +115,6 @@
     resetProgress();
   }
 
-  function readSavedTransfers() {
-    try {
-      const value = localStorage.getItem('dropqr.transfers');
-      return value ? JSON.parse(value) : [];
-    } catch (_error) {
-      return [];
-    }
-  }
-
-  function saveTransferToLocalDashboard(payload) {
-    const transfers = readSavedTransfers().filter((item) => item.id !== payload.id);
-    transfers.unshift({
-      id: payload.id,
-      deleteKey: payload.deleteKey,
-      fileName: payload.fileName,
-      sizeHuman: payload.sizeHuman,
-      shareUrl: payload.shareUrl,
-      downloadUrl: payload.downloadUrl,
-      expiresAt: payload.expiresAt,
-      deleteAfterDownload: payload.deleteAfterDownload,
-      createdAt: new Date().toISOString()
-    });
-    localStorage.setItem('dropqr.transfers', JSON.stringify(transfers.slice(0, 60)));
-  }
-
   async function loadConfig() {
     try {
       const response = await fetch('/api/config', { cache: 'no-store' });
@@ -322,8 +297,6 @@
   function showResult(payload, file) {
     setProgress(100, file.size, file.size, 'QR code généré');
     progressLabel.textContent = 'Upload terminé';
-    saveTransferToLocalDashboard(payload);
-
     const expiry = new Date(payload.expiresAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
     qrImage.src = payload.qrDataUrl;
     resultName.textContent = payload.fileName;

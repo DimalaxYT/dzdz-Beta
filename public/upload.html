@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Envoyer — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=14">
+  <link rel="stylesheet" href="/assets/app.css?v=15">
 </head>
 <body>
   <div class="shell">
@@ -14,11 +14,9 @@
         <a href="/">Accueil</a>
         <a class="active" href="/upload">Envoyer</a>
         <a href="/receive">Recevoir</a>
-        <a href="/dashboard">Mes liens</a>
         <a href="/help">Aide</a>
       </div>
     </nav>
-
     <header class="hero page-heading">
       <div class="hero-main">
         <div class="page-code">02 / SEND</div>
@@ -31,7 +29,6 @@
         <span><strong>16 Mo</strong>par morceau</span>
       </div>
     </header>
-
     <main class="app-grid">
       <section class="panel" aria-labelledby="uploadTitle">
         <div class="panel-head">
@@ -48,13 +45,11 @@
                 <p class="drop-subtitle" id="dropSubtitle">ou cliquer pour le choisir</p>
               </div>
             </div>
-
             <div id="fileChip" class="file-chip" aria-live="polite">
               <div class="file-icon"><img src="/assets/file-icon.svg?v=6" alt="" aria-hidden="true"></div>
               <div class="file-chip-info"><div id="fileChipName" class="file-chip-name"></div><div id="fileChipSize" class="file-chip-size"></div></div>
               <button id="clearFile" class="clear-btn" type="button">Retirer</button>
             </div>
-
             <div class="settings">
               <label class="field"><span class="label-row">Durée du lien <span class="hint">suppression automatique</span></span>
                 <select name="ttlMinutes" id="ttlMinutes">
@@ -64,7 +59,6 @@
               <label class="toggle"><input type="checkbox" id="deleteAfterDownload" name="deleteAfterDownload" checked><span><strong>Supprimer après le premier téléchargement</strong><span>À désactiver si plusieurs personnes doivent récupérer le fichier.</span></span></label>
               <button id="sendButton" class="primary-btn" type="submit" disabled>Envoyer et générer le code</button>
             </div>
-
             <div id="progressPanel" class="progress-panel" aria-live="polite">
               <div class="progress-top"><div class="progress-label" id="progressLabel">Upload en cours</div><div class="progress-percent" id="progressPercent">0%</div></div>
               <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progression de l'upload"><div id="progressBar" class="progress-bar"></div></div>
@@ -74,7 +68,6 @@
           </form>
         </div>
       </section>
-
       <aside class="panel result-panel" aria-labelledby="resultTitle">
         <div class="panel-head"><div><h2 id="resultTitle" class="panel-title">Sortie du transfert</h2><p class="panel-caption">Le code et le QR apparaîtront ici une fois l'envoi terminé.</p></div><span class="step-pill">Étape 02</span></div>
         <div class="panel-body">
@@ -87,7 +80,6 @@
             <div id="configNotice" class="notice hidden"></div>
             <div class="warning">Le code et le QR donnent accès au fichier tant que le transfert existe.</div>
           </div>
-
           <div id="result" class="result">
             <div id="sandboxWarning" class="warning hidden"></div>
             <div class="qr-card"><div class="qr-box"><img id="qrImage" alt="QR code du lien de réception"></div><div class="scan-note">Scanner ou transmettre le code</div></div>
@@ -105,10 +97,9 @@
         </div>
       </aside>
     </main>
-
-    <footer><span><strong>DropQR</strong> / envoi parallèle / fin programmée</span><span><a href="/dashboard">Voir mes liens</a></span></footer>
+    <footer><span><strong>DropQR</strong> / envoi parallèle / fin programmée</span><span><a class="footer-action" href="/mentions">Mentions</a></span></footer>
   </div>
-  <script src="/assets/site.js?v=6" defer></script>
-  <script src="/assets/upload.js?v=11" defer></script>
+  <script src="/assets/site.js?v=7" defer></script>
+  <script src="/assets/upload.js?v=12" defer></script>
 </body>
 </html>

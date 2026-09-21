@@ -6,8 +6,8 @@ DropQR est un site multi-pages pour transférer temporairement des fichiers entr
 
 - `/` : accueil
 - `/upload` : création d’un transfert avec barre de progression
-- `/dashboard` : suivi local des liens créés depuis ce navigateur
 - `/help` : aide, déploiement et explication du QR code dans la preview Arena
+- `/mentions` : mentions légales, confidentialité et données traitées
 - `/t/:id` : page publique de téléchargement
 
 ## Backend

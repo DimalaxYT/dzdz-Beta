@@ -1,6 +1,11 @@
 (() => {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = document.documentElement;
+
+  // L'ancien tableau de bord local n'existe plus: les anciennes entrées
+  // éventuelles sont supprimées pour ne pas laisser d'historique côté navigateur.
+  try { localStorage.removeItem('dropqr.transfers'); } catch (_error) {}
+
   const parallaxItems = [...document.querySelectorAll('[data-parallax]')];
   const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .doc-section .card')];
 

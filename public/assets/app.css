@@ -491,6 +491,12 @@ pre { overflow-x: auto; margin: 19px 0 0; padding: 17px; border: 1px solid var(-
 .share-page .video-preview { max-height: 420px; margin: 16px 0; }
 .share-download { width: 100%; margin-top: 8px; }
 .share-note { margin: 18px 0 0; color: var(--faint); font-size: 12px; line-height: 1.6; }
+.share-legal { margin: 18px 0 0; text-align: center; }
+.share-legal a { color: var(--muted); font-family: var(--mono); font-size: 10px; text-decoration: none; text-transform: uppercase; }
+.share-legal a:hover { color: var(--acid); }
+.footer-action { display: inline-flex; align-items: center; min-height: 32px; padding: 8px 12px; border: 1px solid var(--line-bright); color: var(--aqua) !important; font-family: var(--mono); font-size: 10px; text-decoration: none; text-transform: uppercase; transition: border-color .2s ease, color .2s ease, transform .2s ease; }
+.footer-action:hover { border-color: var(--acid); color: var(--acid) !important; transform: translateY(-2px); }
+.legal-note { padding: 14px; border-left: 2px solid var(--acid); background: rgba(220,255,94,.05); }
 
 @media (max-width: 940px) {
   .hero, .app-grid, .receive-layout { grid-template-columns: 1fr; }

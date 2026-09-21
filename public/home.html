@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DropQR — transfert temporaire</title>
-  <link rel="stylesheet" href="/assets/app.css?v=14">
+  <link rel="stylesheet" href="/assets/app.css?v=15">
 </head>
 <body class="page-home">
   <div class="shell">
@@ -14,11 +14,9 @@
         <a class="active" href="/">Accueil</a>
         <a href="/upload">Envoyer</a>
         <a href="/receive">Recevoir</a>
-        <a href="/dashboard">Mes liens</a>
         <a href="/help">Aide</a>
       </div>
     </nav>
-
     <main>
       <header class="hero">
         <div class="hero-main">
@@ -30,7 +28,6 @@
             <a class="btn" href="/receive">Entrer un code</a>
           </div>
         </div>
-
         <aside class="signal-card" data-parallax data-speed="-.1" aria-label="Aperçu d'un transfert">
           <div class="signal-head"><span>Canal temporaire</span><span class="signal-state">Opérationnel</span></div>
           <div class="signal-code">Q7R-4M2</div>
@@ -43,22 +40,18 @@
           <div class="qr-dummy" aria-hidden="true"></div>
         </aside>
       </header>
-
       <div class="home-rail" aria-label="Caractéristiques">
         <span>Jusqu'à 10 Go</span><span>Morceaux parallèles</span><span>Vidéos lisibles</span><span>Suppression automatique</span><span>Webhooks Discord</span>
       </div>
-
       <section class="stat-grid" aria-label="Résumé du service">
         <article class="stat-card"><strong>01</strong><span>Un code court pour retrouver le transfert.</span></article>
         <article class="stat-card"><strong>15 min</strong><span>Une durée courte par défaut, modifiable à l'envoi.</span></article>
         <article class="stat-card"><strong>0 trace</strong><span>Le fichier et son lien ne sont pas conservés indéfiniment.</span></article>
       </section>
-
       <div class="section-head">
         <div><div class="section-label">Le système</div><h2>Un outil direct, pas un espace de stockage.</h2></div>
         <p>Chaque écran a une action claire. Le destinataire n'a pas besoin de compte ni d'installation.</p>
       </div>
-
       <section class="feature-grid" aria-label="Fonctionnalités">
         <article class="feature-card">
           <div class="feature-index"><span>01 / ENVOYER</span></div>
@@ -76,18 +69,16 @@
           <p>Le transfert disparaît à expiration, après le premier téléchargement ou depuis ton tableau de bord.</p>
         </article>
       </section>
-
       <section class="info-strip">
         <h2>La preview n'est pas le réseau local.</h2>
         <p>Dans Arena, un QR scanné par un téléphone peut rencontrer la protection de la plateforme. Pour un vrai test mobile, utilise l'URL Render publique ou lance DropQR sur ton Wi-Fi local.</p>
       </section>
     </main>
-
     <footer>
       <span><strong>DropQR</strong> / fichiers temporaires / interface sans compte</span>
       <span><a href="/api/health">État du backend</a></span>
-    </footer>
+    <span><a class="footer-action" href="/mentions">Mentions</a></span></footer>
   </div>
-  <script src="/assets/site.js?v=6" defer></script>
+  <script src="/assets/site.js?v=7" defer></script>
 </body>
 </html>

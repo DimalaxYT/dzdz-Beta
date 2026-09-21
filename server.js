@@ -606,9 +606,10 @@ function sendPage(res, fileName) {
 
 app.get('/', (_req, res) => sendPage(res, 'home.html'));
 app.get('/upload', (_req, res) => sendPage(res, 'upload.html'));
-app.get('/dashboard', (_req, res) => sendPage(res, 'dashboard.html'));
+app.get('/dashboard', (_req, res) => res.redirect('/'));
 app.get('/receive', (_req, res) => sendPage(res, 'receive.html'));
 app.get('/help', (_req, res) => sendPage(res, 'help.html'));
+app.get('/mentions', (_req, res) => sendPage(res, 'mentions.html'));
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -1091,7 +1092,7 @@ function renderSharePage(req, meta) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=14">
+  <link rel="stylesheet" href="/assets/app.css?v=15">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1113,9 +1114,10 @@ function renderSharePage(req, meta) {
       <a class="btn primary share-download" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
       ${isSandboxPreview(req) ? '<div class="warning" style="margin-top:16px">La preview Arena peut demander un token de sécurité à un téléphone externe. Utilise l’URL Render ou le réseau local pour un vrai scan.</div>' : ''}
       <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
+      <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=6" defer></script>
+  <script src="/assets/site.js?v=7" defer></script>
 </body>
 </html>`;
 }
@@ -1127,7 +1129,7 @@ function renderMessagePage(title, message) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=14">
+  <link rel="stylesheet" href="/assets/app.css?v=15">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1137,9 +1139,10 @@ function renderMessagePage(title, message) {
       <h1>${escapeHtml(title)}</h1>
       <p class="lead">${escapeHtml(message)}</p>
       <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
+      <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=6" defer></script>
+  <script src="/assets/site.js?v=7" defer></script>
 </body>
 </html>`;
 }
