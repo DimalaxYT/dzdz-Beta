@@ -1,267 +1,234 @@
-# DropQR
+# DropQR 2.0
 
-DropQR est un site multi-pages pour transférer temporairement des fichiers entre appareils avec un QR code.
+Transfert temporaire de fichiers entre appareils : un **code court**, un **QR code**, et le fichier
+disparaît à l'expiration ou après le premier téléchargement.
 
-## Pages
+La version 2 a été écrite pour **tourner sur Netlify gratuitement**. C'est possible parce que les
+octets ne traversent jamais la fonction serverless : le navigateur envoie le fichier directement dans
+un stockage objet compatible S3 (Cloudflare R2 par exemple), et la fonction ne valide que les
+métadonnées.
 
-- `/` : accueil
-- `/upload` : création d’un transfert avec barre de progression
-- `/dashboard` : suivi local des liens créés depuis ce navigateur
-- `/help` : aide, déploiement et explication du QR code dans la preview Arena
-- `/t/:id` : page publique de téléchargement
+```
+Navigateur ──(1) demande une autorisation──► Fonction Netlify
+     │                                            │
+     │                                            └── prépare les métadonnées
+     │
+     └──(2) envoie les octets directement───► Stockage objet R2 / S3
+                                                  │
+                                    (3) la fonction valide, l'objet est prêt
+```
 
-## Backend
+Pourquoi c'est nécessaire : **une fonction Netlify n'accepte que 6 Mo par requête** (≈ 4,5 Mo en
+binaire) et 20 Mo en réponse. Un serveur Express classique ne peut donc pas recevoir un fichier de
+2 Go sur Netlify — mais une URL pré-signée, si.
 
-Backend Node.js/Express avec :
+## Les deux modes
 
-- upload classique avec Multer vers le disque local ;
-- upload par morceaux configurables via `/api/transfers/chunk` pour contourner les limites proxy/hébergeur liées aux gros fichiers ;
-- génération de QR code ;
-- métadonnées dans `storage/db.json` ;
-- suppression après premier téléchargement si activée ;
-- suppression automatique à expiration ;
-- suppression manuelle via clé privée retournée à l’upload ;
-- tâche de nettoyage toutes les minutes.
+| | Netlify (recommandé, gratuit) | Serveur Node |
+| --- | --- | --- |
+| Pages | Fonction serverless (rendu à la volée) | Même code, servies localement |
+| Octets | Stockage objet S3/R2 via URL pré-signées | Disque de la machine |
+| Métadonnées | Netlify Blobs (cohérence forte) | Fichiers JSON sur disque |
+| Hôte | Netlify | localhost, VPS, Railway, Render |
 
-## Démarrage
+Le même `lib/app.mjs` sert de routeur dans les deux cas : aucun comportement divergent.
+
+## Démarrage local
 
 ```bash
 npm install
 npm start
+# http://localhost:3000
 ```
 
-Ouvre ensuite :
-
-```txt
-http://localhost:3000
-```
-
-## Tester avec un téléphone sur le même Wi‑Fi
-
-Ne mets pas `localhost` dans le QR code, car `localhost` sur le téléphone pointe vers le téléphone lui-même.
-
-Utilise l’IP locale du PC :
+Sans aucune variable : stockage sur disque, tout fonctionne. Pour tester depuis un téléphone sur le
+même Wi-Fi :
 
 ```bash
 PUBLIC_URL="http://192.168.1.25:3000" npm start
 ```
 
-Puis ouvre `http://192.168.1.25:3000` sur le téléphone.
+## Déploiement sur Netlify (pas à pas)
 
-## Déploiement Netlify : attention
+### 1. Créer le compartiment de stockage
 
-Si tu as mis le ZIP complet sur Netlify en Drag & Drop et que tu vois une page `Page not found`, c’est parce que Netlify sert du statique et ne lance pas `server.js`.
+Cloudflare R2 : compte gratuit, **10 Go** de stockage et **aucun frais de sortie**.
 
-DropQR a besoin d’un backend Node.js pour recevoir les fichiers, générer les QR codes, servir les téléchargements et supprimer automatiquement les documents. Pour la version complète, utilise plutôt Render, Railway, Fly.io ou un VPS.
+1. Crée un bucket, par exemple `dropqr`.
+2. Dans « Manage R2 API Tokens », crée un jeton avec les droits **Object Read & Write** sur ce bucket.
+3. Note trois valeurs : l'identifiant de compte, l'`Access Key ID` et le `Secret Access Key`.
 
-J’ai quand même ajouté `netlify.toml`, `public/_redirects` et une page d’explication pour éviter le 404 si tu testes en statique, mais l’upload ne fonctionnera pas sans backend.
+### 2. Ajouter les variables sur Netlify
 
-## Important pour la preview Arena/e2b
+`Site configuration` → `Environment variables` :
 
-La preview Arena/e2b peut bloquer les accès directs depuis un téléphone avec l’erreur :
+| Variable | Exemple | Rôle |
+| --- | --- | --- |
+| `R2_ACCOUNT_ID` | `a1b2c3d4e5f6` | construit l'URL de stockage |
+| `S3_BUCKET` | `dropqr` | nom du compartiment |
+| `S3_ACCESS_KEY_ID` | `8f3a...` | jeton R2 |
+| `S3_SECRET_ACCESS_KEY` | `1c9d...` | secret du jeton |
+| `PUBLIC_URL` | `https://mon-dropqr.netlify.app` | utilisé pour les liens et le QR |
+| `CRON_SECRET` | chaîne aléatoire | protège la route de nettoyage manuel |
+| `DISCORD_WEBHOOK_URL` | `https://discord.com/api/webhooks/...` | notification optionnelle |
+| `MAX_FILE_SIZE` | `2gb` | limite par transfert (défaut 2 Go) |
+| `MAX_TTL_MINUTES` | `1440` | durée de vie maximale |
 
-```txt
-Missing Traffic Access Token
+Puis relance un déploiement.
+
+### 3. Autoriser le navigateur (CORS sur R2)
+
+Sans cela, le navigateur bloquera l'envoi direct. Dans les réglages du bucket R2 :
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://mon-dropqr.netlify.app"],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
 ```
 
-C’est normal dans cette preview : la plateforme demande un header `e2b-traffic-access-token` que le téléphone n’a pas quand il scanne le QR code.
+`ETag` doit être exposé : c'est ce qui permet d'assembler les morceaux d'un gros fichier. Si tu ne peux
+pas l'exposer, l'application demande les ETag au stockage à la place (secours automatique).
 
-Pour un vrai scan QR depuis téléphone, il faut :
+### 4. Vérifier
 
-1. lancer le site sur ton réseau local avec `PUBLIC_URL=http://IP_DU_PC:3000`, ou
-2. déployer le site sur un domaine public HTTPS.
-
-## Taille des fichiers
-
-Par défaut, DropQR n’impose plus de limite de taille côté application.
-
-Depuis la version 1.5.0, l’interface envoie les fichiers par morceaux configurables. Ça évite les erreurs fréquentes de plateforme liées aux gros fichiers, comme ton HTTP 400 sur un fichier de 51,7 Mo.
-
-Après déploiement, vérifie absolument :
-
-```txt
-https://ton-site.com/api/health
-```
-
-La réponse doit contenir :
+Ouvre `/api/health`. La réponse attendue :
 
 ```json
 {
-  "version": "1.7.0",
-  "chunkedUpload": true
+  "ok": true,
+  "version": "2.0.0",
+  "storage": "s3",
+  "metadata": "blobs",
+  "directUpload": true
 }
 ```
 
-Si `/api/health` ne contient pas ça, ton frontend est à jour mais ton backend ne l’est pas, ou tu as déployé en statique.
+Puis envoie un fichier de test. S'il dépasse la taille d'un morceau, l'envoi passe automatiquement en
+multipart avec plusieurs flux parallèles.
 
-Les limites restantes peuvent venir :
+### Ce que Netlify exécute
 
-- du disque serveur ;
-- de l’hébergeur ;
-- de Nginx/Apache/Cloudflare ;
-- du navigateur ;
-- du temps de connexion.
+- `netlify/functions/api.mjs` : toutes les routes dynamiques (`/`, `/upload`, `/api/*`, `/r/:id`, …).
+- `netlify/functions/purge.mjs` : tâche planifiée toutes les 15 minutes (suppression des fichiers
+  expirés, des envois abandonnés et des messages Discord échus).
+- `public/` : fichiers statiques (CSS, JavaScript, images) servis par le CDN.
 
-Si tu veux réactiver une limite applicative :
-
-```bash
-MAX_FILE_SIZE=2gb npm start
-# ou
-MAX_FILE_SIZE_MB=2048 npm start
-```
-
-## Variables d’environnement
+## Variables d'environnement
 
 | Variable | Défaut | Rôle |
-| --- | ---: | --- |
-| `PORT` | `3000` | Port HTTP |
-| `HOST` | `0.0.0.0` | Adresse d’écoute |
-| `PUBLIC_URL` | vide | URL mise dans le QR code |
-| `MAX_FILE_SIZE` | vide | Limite optionnelle, ex: `2gb`, `500mb` |
-| `MAX_FILE_SIZE_MB` | vide | Limite optionnelle en Mo |
-| `DEFAULT_TTL_MINUTES` | `15` | Durée par défaut |
-| `MAX_TTL_MINUTES` | `1440` | Durée max autorisée |
+| --- | --- | --- |
+| `DROPQR_STORAGE` | `auto` | `s3`, `local` ou `auto` (détection) |
+| `DROPQR_META` | `auto` | `blobs`, `local` ou `auto` |
+| `S3_ENDPOINT` | déduit de `R2_ACCOUNT_ID` | compatible MinIO, B2, AWS |
+| `S3_REGION` | `auto` | région de signature |
+| `S3_FORCE_PATH_STYLE` | `true` | style d'URL (`/bucket/cle`) |
+| `S3_PREFIX` | `dropqr` | préfixe des objets |
+| `PART_SIZE_MB` | `8` | taille d'un morceau (multipart) |
+| `UPLOAD_CONCURRENCY` | `3` | envois simultanés |
+| `DEFAULT_TTL_MINUTES` | `30` | durée de vie par défaut |
+| `MAX_TTL_MINUTES` | `1440` | durée de vie maximale |
+| `MAX_FILE_SIZE` | `2gb` | limite par transfert (`0` = illimité) |
+| `PUBLIC_URL` | déduite | URL publique du site |
+| `PORT` / `HOST` | `3000` / `0.0.0.0` | serveur Node |
+| `CRON_SECRET` | vide | protection de `POST /api/purge` |
 
 ## API
 
-- `GET /api/health`
-- `GET /api/config`
-- `GET /api/stats`
-- `POST /api/transfers`
-- `POST /api/transfers/chunk`
-- `GET /api/transfers/:id`
-- `DELETE /api/transfers/:id`
-- `GET /t/:id`
-- `GET /download/:id`
+| Route | Rôle |
+| --- | --- |
+| `GET /api/health` | état, mode de stockage, limites |
+| `GET /api/config` | configuration publique du front |
+| `POST /api/transfers` | crée un transfert et renvoie le plan d'envoi |
+| `POST /api/transfers/:id/parts` | URL pré-signées des morceaux |
+| `POST /api/transfers/:id/complete` | valide et marque le transfert comme prêt |
+| `GET /api/codes/:code` | recherche par code |
+| `GET /api/transfers/:id` | métadonnées publiques |
+| `DELETE /api/transfers/:id` | suppression (clé privée requise) |
+| `GET /r/:id` | page de téléchargement (QR) |
+| `GET /asset/:id` · `GET /download/:id` | lecture / téléchargement |
+| `POST /api/notify/discord` | envoi de la notification (clé privée requise) |
+| `POST /api/purge` | nettoyage manuel (`x-cron-secret`) |
 
-## Stockage externe
+## Sécurité
 
-Pour une version production plus robuste, branche un stockage S3-compatible comme Cloudflare R2, Backblaze B2 ou AWS S3.
+- Clé de suppression privée par transfert, stockée sous forme de condensat SHA-256 et comparée en temps
+  constant.
+- Contenus exécutables (`.html`, `.svg`, `.js`) servis en **pièce jointe** avec
+  `application/octet-stream` : jamais exécutés sur l'origine du site.
+- CSP stricte, `nosniff`, `frame-ancestors 'self'`, `object-src 'none'`.
+- URL de lecture pré-signées à durée limitée : les liens ne sont pas devinables.
+- Limite de débit par IP sur la création de transferts et la recherche de codes.
+- Les noms de fichiers sont nettoyés, les identifiants tirés de façon cryptographique.
+- Suppression après téléchargement : effective dès la fin du flux (mode serveur) ou via une fenêtre de
+  grâce de 20 minutes (mode objet), pour ne pas couper un gros transfert en cours.
 
-Je déconseille TeraBox comme backend applicatif : l’API n’est pas pensée comme stockage temporaire stable de type S3, et les scripts tiers peuvent nécessiter des cookies/session.
+## Interface
 
-## Envoi Discord du code + QR code
+Direction artistique « papier, cuivre, jade » : typographie Fraunces + Outfit, thème clair/sombre
+automatique avec bascule manuelle, images générées (aucun texte dans les visuels), **aucun emoji**
+(les pictogrammes sont des SVG dessinés à la main).
 
-DropQR peut envoyer automatiquement un message Discord après chaque upload.
+Widgets : anneau et barre de progression avec débit réel, courbe de vitesse, QR vectoriel animé, code
+à sept cases, compte à rebours jours/heures/minutes/secondes, toasts, accordéon, statistiques animées.
 
-Le plus simple n’est pas un vrai bot avec token, mais un **webhook Discord** : il poste dans un salon comme un bot, sans garder un token sensible de bot.
+Animations : apparition au défilement, inclinaison des cartes, parallaxe (images et fonds), bandeau
+défilant, compteurs. Tout se désactive si le système demande de réduire les animations.
 
-### Configuration
+## Tests
 
-Dans Discord :
-
-1. Va dans le salon voulu.
-2. `Modifier le salon` → `Intégrations` → `Webhooks`.
-3. Crée un webhook nommé `DropQR`.
-4. Copie l’URL du webhook.
-5. Ajoute-la dans les variables d’environnement de ton hébergeur :
-
-```env
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-DISCORD_USERNAME=DropQR
-# Optionnel : mentionner quelqu’un ou un rôle
-# DISCORD_MENTION=<@123456789>
-# DISCORD_MENTION=<@&123456789>
+```bash
+npm run check      # analyse syntaxique de tous les fichiers
+npm test           # 82 vérifications : pages, sécurité, cycle complet, expiration, débit, SigV4
+npm run test:s3    # nécessite : npm install --no-save s3rver
 ```
 
-Après redéploiement, `GET /api/health` doit afficher :
+`npm test` ne demande aucune dépendance supplémentaire. `npm run test:s3` fait tourner un faux serveur
+S3 pour valider la chaîne multipart et les redirections, et revérifie les signatures SigV4 à partir de
+la spécification AWS.
 
-```json
-{
-  "discordConfigured": true
-}
+## Dépannage
+
+**« Page not found » ou 404 sur `/api/...`**
+Vérifie que `netlify.toml` pointe bien `publish = "public"` et `functions = "netlify/functions"`, puis
+relance un déploiement complet (pas seulement un « Deploy site » sans build).
+
+**L'envoi démarre puis échoue immédiatement**
+C'est presque toujours le CORS du stockage : origine autorisée en `GET`, `PUT`, `HEAD`, et `ETag`
+exposé. L'interface affiche un message explicite dans ce cas.
+
+**Un gros fichier s'arrête en cours de route**
+Réduis `PART_SIZE_MB` à 5 et `UPLOAD_CONCURRENCY` à 2. Les morceaux déjà envoyés sont conservés lors
+d'un nouvel essai.
+
+**Le QR ne s'ouvre pas depuis le téléphone**
+`PUBLIC_URL` doit être l'URL publique réelle. En local, utilise l'IP du PC, jamais `localhost`.
+
+**« Missing Traffic Access Token » dans l'aperçu Arena/e2b**
+La plateforme de prévisualisation protège les URL par jeton : un téléphone externe ne peut pas ouvrir
+le lien. Déploie le site ou teste en local avec `PUBLIC_URL`.
+
+## Structure
+
 ```
-
-À chaque upload, Discord reçoit :
-
-- le code court du transfert ;
-- le lien ;
-- le QR code en image ;
-- le nom du fichier ;
-- la taille ;
-- l’expiration.
-
-Ne colle jamais un token de bot Discord directement dans le chat. Si on veut un vrai bot Discord avec commandes slash plus tard, on le fera avec un fichier `.env`.
-
-## Version 1.5.0
-
-Changements principaux :
-
-- le QR code pointe maintenant vers `/receive?code=...` au lieu d’un lien technique ;
-- si `PUBLIC_URL` est saisi sans `https://`, DropQR ajoute automatiquement `https://` ;
-- la page `/receive` permet d’entrer un code et affiche les informations du fichier avant téléchargement ;
-- le message Discord est supprimé automatiquement à l’expiration du transfert ;
-- le message Discord est aussi supprimé si le fichier est supprimé avant expiration ;
-- interface simplifiée, moins “IA”, plus directe.
-
-Après déploiement Railway, vérifie :
-
-```txt
-/api/health
-```
-
-La réponse doit contenir :
-
-```json
-{
-  "version": "1.7.0",
-  "discordConfigured": true
-}
-```
-
-
-## Version 1.5.0
-
-Améliorations principales :
-
-- interface plus sobre, plus rapide au scroll, sans effets lourds ;
-- upload accéléré : morceaux plus grands par défaut (`CHUNK_SIZE_MB=8`) ;
-- upload en parallèle (`UPLOAD_CONCURRENCY=4`) au lieu d’un morceau après l’autre ;
-- nouvelle route `POST /api/transfers/complete` pour assembler le fichier après l’envoi parallèle ;
-- assemblage serveur en streaming pour éviter de charger les morceaux en mémoire ;
-- `/api/health` expose maintenant `recommendedChunkSizeBytes` et `uploadConcurrency`.
-
-Variables optionnelles pour ajuster la vitesse :
-
-```env
-CHUNK_SIZE_MB=8
-UPLOAD_CONCURRENCY=4
-```
-
-Si l’hébergeur refuse les uploads, baisse `CHUNK_SIZE_MB` à `4`. Si la connexion et l’hébergeur tiennent bien, tu peux essayer `CHUNK_SIZE_MB=12` et `UPLOAD_CONCURRENCY=5`.
-
-## Version 1.6.0
-
-Support vidéo :
-
-- les vidéos peuvent être envoyées comme les autres fichiers ;
-- la page `/receive` affiche un lecteur vidéo si le fichier reçu est une vidéo ;
-- nouvelle route `GET /view/:id` pour lire les vidéos dans le navigateur ;
-- support des requêtes `Range`, indispensable pour avancer dans une vidéo sans tout télécharger ;
-- le bouton de téléchargement reste disponible pour récupérer le fichier original.
-
-
-## Version 1.7.0
-
-Améliorations demandées :
-
-- limite applicative par défaut fixée à **10 Go** par transfert ;
-- upload plus agressif par défaut : `CHUNK_SIZE_MB=16` et `UPLOAD_CONCURRENCY=5` ;
-- moins de scans disque pendant l’upload : les morceaux sont finalisés par une route dédiée ;
-- interface retravaillée pour être plus propre, moins “IA”, plus produit ;
-- cartes visuelles sur l’accueil, page Envoyer plus claire, indications 10 Go / upload parallèle / vidéos.
-
-Variables utiles sur Railway :
-
-```env
-MAX_FILE_SIZE=10gb
-CHUNK_SIZE_MB=16
-UPLOAD_CONCURRENCY=5
-```
-
-Si Railway ou le réseau montre des erreurs pendant l’upload, réduis progressivement :
-
-```env
-CHUNK_SIZE_MB=8
-UPLOAD_CONCURRENCY=4
+lib/
+  params.mjs      configuration et détection du mode
+  s3.mjs          client S3 minimal (signature SigV4, multipart) — sans dépendance
+  store.mjs       métadonnées : Netlify Blobs ou disque (écritures atomiques)
+  transfers.mjs   logique métier : codes, expiration, suppression, Discord
+  qr.mjs          QR en SVG (page) et PNG (Discord)
+  layout.mjs      enveloppe HTML, navigation, icônes SVG
+  views.mjs       pages rendues à la volée
+  app.mjs         routeur unique (Request/Response)
+netlify/functions/
+  api.mjs         point d'entrée des routes dynamiques
+  purge.mjs       tâche planifiée
+public/           CSS, JavaScript, images, favicon
+server.js         serveur Node autonome (même routeur)
+scripts/          suites de tests
 ```

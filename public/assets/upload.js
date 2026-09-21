@@ -1,440 +1,543 @@
+/* ==========================================================================
+   DropQR — page d'envoi
+   Le fichier ne passe jamais par la fonction serverless : le navigateur
+   demande une autorisation (URL pré-signée ou route locale), puis envoie les
+   octets directement. Le serveur ne valide que les métadonnées à la fin.
+   ========================================================================== */
+
 (() => {
-  let chunkSize = 8 * 1024 * 1024;
-  let uploadConcurrency = 5;
+  'use strict';
 
-  const form = document.getElementById('uploadForm');
-  const fileInput = document.getElementById('fileInput');
-  const dropzone = document.getElementById('dropzone');
-  const dropTitle = document.getElementById('dropTitle');
-  const dropSubtitle = document.getElementById('dropSubtitle');
-  const sendButton = document.getElementById('sendButton');
-  const status = document.getElementById('status');
-  const result = document.getElementById('result');
-  const emptyState = document.getElementById('emptyState');
-  const qrImage = document.getElementById('qrImage');
-  const resultName = document.getElementById('resultName');
-  const resultCode = document.getElementById('resultCode');
-  const resultDiscord = document.getElementById('resultDiscord');
-  const resultSize = document.getElementById('resultSize');
-  const resultExpiry = document.getElementById('resultExpiry');
-  const resultCleanup = document.getElementById('resultCleanup');
-  const shareLink = document.getElementById('shareLink');
-  const copyButton = document.getElementById('copyButton');
-  const openLink = document.getElementById('openLink');
-  const newTransfer = document.getElementById('newTransfer');
-  const deleteAfterDownload = document.getElementById('deleteAfterDownload');
-  const ttlMinutes = document.getElementById('ttlMinutes');
-  const fileChip = document.getElementById('fileChip');
-  const fileChipName = document.getElementById('fileChipName');
-  const fileChipSize = document.getElementById('fileChipSize');
-  const clearFile = document.getElementById('clearFile');
-  const progressPanel = document.getElementById('progressPanel');
-  const progressLabel = document.getElementById('progressLabel');
-  const progressPercent = document.getElementById('progressPercent');
-  const progressBar = document.getElementById('progressBar');
-  const progressTrack = document.querySelector('.progress-track');
-  const progressLoaded = document.getElementById('progressLoaded');
-  const progressSpeed = document.getElementById('progressSpeed');
-  const sandboxWarning = document.getElementById('sandboxWarning');
-  const configNotice = document.getElementById('configNotice');
+  const {
+    formatBytes,
+    config,
+    toast,
+    renderCodeDisplay,
+    startCountdown,
+    createSparkline,
+    copyText
+  } = window.DropQR;
 
-  let backendReachable = true;
-  let chunkedUploadAvailable = true;
-  let uploadInProgress = false;
-  let currentUploadToken = null;
-  let activeRequests = new Set();
+  const $ = (id) => document.getElementById(id);
 
-  function formatBytes(bytes) {
-    const value = Number(bytes || 0);
-    if (value < 1024) return `${value} o`;
-    const units = ['Ko', 'Mo', 'Go', 'To'];
-    let size = value / 1024;
-    let unit = units[0];
-    for (let i = 0; i < units.length; i += 1) {
-      unit = units[i];
-      if (size < 1024 || i === units.length - 1) break;
-      size /= 1024;
-    }
-    return `${size.toFixed(size >= 10 ? 1 : 2)} ${unit}`;
+  const form = $('uploadForm');
+  const fileInput = $('fileInput');
+  const dropzone = $('dropzone');
+  const dropTitle = $('dropTitle');
+  const dropSubtitle = $('dropSubtitle');
+  const fileChip = $('fileChip');
+  const fileChipName = $('fileChipName');
+  const fileChipSize = $('fileChipSize');
+  const clearFile = $('clearFile');
+  const ttlMinutes = $('ttlMinutes');
+  const deleteAfterDownload = $('deleteAfterDownload');
+  const sendButton = $('sendButton');
+  const sendLabel = $('sendLabel');
+  const status = $('status');
+
+  const progressCard = $('progressCard');
+  const progressRing = $('progressRing');
+  const progressPercent = $('progressPercent');
+  const progressLabel = $('progressLabel');
+  const progressEta = $('progressEta');
+  const progressBar = $('progressBar');
+  const progressLoaded = $('progressLoaded');
+  const progressSpeed = $('progressSpeed');
+  const sparkline = $('sparkline');
+  const pushSample = createSparkline(sparkline);
+
+  const result = $('result');
+  const emptyState = $('emptyState');
+  const qrHolder = $('qrHolder');
+  const resultCodeSlots = $('resultCodeSlots');
+  const copyCode = $('copyCode');
+  const resultName = $('resultName');
+  const resultSize = $('resultSize');
+  const resultExpiry = $('resultExpiry');
+  const resultCleanup = $('resultCleanup');
+  const resultDiscord = $('resultDiscord');
+  const countdown = $('countdown');
+  const shareLink = $('shareLink');
+  const copyLink = $('copyLink');
+  const openLink = $('openLink');
+  const downloadFile = $('downloadFile');
+  const downloadQr = $('downloadQr');
+  const newTransfer = $('newTransfer');
+  const resultStatusText = $('resultStatusText');
+
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 52;
+
+  const state = {
+    sending: false,
+    cancelled: false,
+    requests: new Set(),
+    stopCountdown: null,
+    lastPayload: null,
+    partProgress: new Map(),
+    startedAt: 0,
+    totalParts: 0,
+    partsDone: 0,
+    fileSize: 0
+  };
+
+  if (window.DropQR.storageUnavailable) {
+    sendButton.disabled = true;
+    setStatus('Stockage non configuré sur ce déploiement : l’envoi est désactivé. Le guide Netlify explique quoi ajouter.', 'error');
+    form.querySelectorAll('input, select, button').forEach((element) => {
+      element.disabled = true;
+    });
   }
 
   function setStatus(message, type = '') {
     status.className = `status ${type}`.trim();
-    status.textContent = message;
+    status.textContent = message || '';
   }
 
-  function setProgress(percent, loaded = 0, total = 0, detail = '') {
-    const safePercent = Math.max(0, Math.min(100, Math.round(percent || 0)));
-    progressPanel.classList.add('visible');
-    progressBar.style.width = `${safePercent}%`;
-    progressPercent.textContent = `${safePercent}%`;
-    progressTrack.setAttribute('aria-valuenow', String(safePercent));
+  function setProgress(percent, { loaded = 0, total = 0, detail = '', eta = '' } = {}) {
+    const safe = Math.max(0, Math.min(100, Number(percent) || 0));
+    progressCard.hidden = false;
+    progressRing.style.strokeDashoffset = String(RING_CIRCUMFERENCE * (1 - safe / 100));
+    progressPercent.textContent = `${Math.round(safe)} %`;
+    progressBar.style.width = `${safe}%`;
     progressLoaded.textContent = total ? `${formatBytes(loaded)} / ${formatBytes(total)}` : `${formatBytes(loaded)} envoyés`;
-    progressSpeed.textContent = detail || 'Upload en cours…';
+    progressSpeed.textContent = detail || 'en cours';
+    progressEta.textContent = eta || 'estimation…';
+    progressEta.className = `chip ${safe >= 99 ? 'chip-jade' : 'chip-soft'}`;
   }
 
   function resetProgress() {
-    progressLabel.textContent = 'Upload en cours';
+    progressCard.hidden = true;
+    progressRing.style.strokeDashoffset = String(RING_CIRCUMFERENCE);
     progressBar.style.width = '0%';
-    progressPercent.textContent = '0%';
-    progressTrack.setAttribute('aria-valuenow', '0');
+    progressPercent.textContent = '0 %';
     progressLoaded.textContent = '0 o / 0 o';
-    progressSpeed.textContent = 'Préparation…';
-    progressPanel.classList.remove('visible');
+    progressSpeed.textContent = '—';
+    progressEta.textContent = 'estimation…';
   }
 
-  function makeUploadId() {
-    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replace(/-/g, '');
-    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  function currentFile() {
+    return fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
   }
 
-  function updateFileLabel() {
-    const file = fileInput.files[0];
-    sendButton.disabled = !file || uploadInProgress;
+  function updateFileUi() {
+    const file = currentFile();
+    sendButton.disabled = !file || state.sending || window.DropQR.storageUnavailable;
 
     if (!file) {
       dropTitle.textContent = 'Dépose ton fichier ici';
-      dropSubtitle.textContent = 'ou clique pour le choisir. Un seul fichier par transfert.';
-      fileChip.classList.remove('visible');
+      dropSubtitle.textContent = 'ou clique pour le choisir. Vidéos, images, archives, documents.';
+      fileChip.hidden = true;
       return;
     }
 
-    const chunks = Math.max(1, Math.ceil(file.size / chunkSize));
     dropTitle.textContent = file.name;
-    dropSubtitle.textContent = `${formatBytes(file.size)} · envoi rapide en ${chunks} morceau${chunks > 1 ? 'x' : ''}`;
+    dropSubtitle.textContent = `${formatBytes(file.size)} prêt à partir`;
     fileChipName.textContent = file.name;
-    fileChipSize.textContent = `${formatBytes(file.size)} · ${uploadConcurrency} envois parallèles · morceaux de ${formatBytes(chunkSize)}`;
-    fileChip.classList.add('visible');
+    fileChipSize.textContent = `${formatBytes(file.size)} · morceaux de ${formatBytes(config.partSizeBytes || 8 * 1024 * 1024)} · ${config.maxParallelUploads || 3} envois simultanés`;
+    fileChip.hidden = false;
   }
 
-  function clearSelectedFile() {
-    if (uploadInProgress) return;
-    fileInput.value = '';
-    updateFileLabel();
-    setStatus('');
-    resetProgress();
+  /* ------------------------------- transport ------------------------------- */
+
+  function trackRequest(xhr) {
+    state.requests.add(xhr);
+    return () => state.requests.delete(xhr);
   }
 
-  function readSavedTransfers() {
-    try {
-      const value = localStorage.getItem('dropqr.transfers');
-      return value ? JSON.parse(value) : [];
-    } catch (_error) {
-      return [];
-    }
-  }
-
-  function saveTransferToLocalDashboard(payload) {
-    const transfers = readSavedTransfers().filter((item) => item.id !== payload.id);
-    transfers.unshift({
-      id: payload.id,
-      deleteKey: payload.deleteKey,
-      fileName: payload.fileName,
-      sizeHuman: payload.sizeHuman,
-      shareUrl: payload.shareUrl,
-      downloadUrl: payload.downloadUrl,
-      expiresAt: payload.expiresAt,
-      deleteAfterDownload: payload.deleteAfterDownload,
-      createdAt: new Date().toISOString()
+  function aggregateLoaded() {
+    let sum = 0;
+    state.partProgress.forEach((value) => {
+      sum += value;
     });
-    localStorage.setItem('dropqr.transfers', JSON.stringify(transfers.slice(0, 60)));
+    return Math.min(sum, state.fileSize);
   }
 
-  async function loadConfig() {
-    try {
-      const response = await fetch('/api/config', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const config = await response.json();
-      backendReachable = true;
-      chunkedUploadAvailable = config.chunkedUpload === true;
-      if (Number(config.recommendedChunkSizeBytes) > 0) chunkSize = Number(config.recommendedChunkSizeBytes);
-      if (Number(config.uploadConcurrency) > 0) uploadConcurrency = Math.min(8, Math.max(1, Number(config.uploadConcurrency)));
-
-      if (!chunkedUploadAvailable) {
-        configNotice.classList.remove('hidden');
-        configNotice.innerHTML = `<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.7.0</code>.`;
-      }
-      if (config.sandboxWarning) {
-        configNotice.classList.remove('hidden');
-        configNotice.innerHTML = `<strong>Preview Arena détectée.</strong> Pour un vrai test mobile, utilise ton URL Railway ou Render.`;
-      }
-    } catch (error) {
-      backendReachable = false;
-      chunkedUploadAvailable = false;
-      configNotice.classList.remove('hidden');
-      configNotice.innerHTML = `<strong>Backend API indisponible.</strong> L’upload ne peut pas fonctionner sur un déploiement statique.`;
-      console.warn('DropQR backend unavailable:', error);
-    } finally {
-      updateFileLabel();
-    }
+  function reportProgress() {
+    const loaded = aggregateLoaded();
+    const elapsed = Math.max((performance.now() - state.startedAt) / 1000, 0.2);
+    const speed = loaded / elapsed;
+    const remaining = Math.max(state.fileSize - loaded, 0);
+    const seconds = speed > 0 ? remaining / speed : 0;
+    const detail = `${formatBytes(speed)}/s · ${state.partsDone}/${state.totalParts} morceaux`;
+    const eta = seconds > 1 ? `reste ${window.DropQR.formatDuration(seconds)}` : 'presque fini';
+    setProgress(state.fileSize ? (loaded / state.fileSize) * 100 : 0, {
+      loaded,
+      total: state.fileSize,
+      detail,
+      eta
+    });
+    pushSample(speed);
   }
 
-  function uploadErrorMessage(xhr, payload) {
-    if (payload && payload.error) return payload.error;
-    if (xhr.status === 0) return 'Le navigateur n’arrive pas à joindre le backend. Vérifie l’URL de déploiement et HTTPS.';
-    if (xhr.status === 400) return 'Requête refusée. Vérifie les logs backend Railway.';
-    if (xhr.status === 404) return 'Route backend introuvable. Redéploie le dernier ZIP comme application Node.js.';
-    if (xhr.status === 413) return 'Morceau refusé par la plateforme. Baisse CHUNK_SIZE_MB à 4 dans les variables Railway.';
-    if (xhr.status >= 500) return `Erreur serveur ${xhr.status}. Regarde les logs du déploiement.`;
-    return `Upload impossible. Réponse serveur HTTP ${xhr.status}.`;
-  }
-
-  function sumProgress(progress) {
-    return progress.reduce((sum, value) => sum + value, 0);
-  }
-
-  function sendChunk({ file, uploadId, chunkIndex, totalChunks, progress, startedAt, token }) {
+  /** Envoi d'un morceau ou du fichier entier vers une URL pré-signée. */
+  function put(url, body, { key = 'single', headers = {}, method = 'PUT' } = {}) {
     return new Promise((resolve, reject) => {
-      const start = chunkIndex * chunkSize;
-      const end = Math.min(file.size, start + chunkSize);
-      const blob = file.slice(start, end);
-      const body = new FormData();
-      body.append('uploadId', uploadId);
-      body.append('chunkIndex', String(chunkIndex));
-      body.append('totalChunks', String(totalChunks));
-      body.append('totalSize', String(file.size));
-      body.append('fileName', file.name);
-      body.append('mimeType', file.type || 'application/octet-stream');
-      body.append('ttlMinutes', ttlMinutes.value);
-      body.append('deleteAfterDownload', deleteAfterDownload.checked ? 'true' : 'false');
-      body.append('autoFinalize', 'false');
-      body.append('chunk', blob, `${file.name}.part${chunkIndex}`);
-
       const xhr = new XMLHttpRequest();
-      activeRequests.add(xhr);
-      xhr.open('POST', '/api/transfers/chunk');
-      xhr.responseType = 'text';
-
-      xhr.upload.onprogress = (event) => {
-        if (token !== currentUploadToken || !event.lengthComputable) return;
-        progress[chunkIndex] = event.loaded;
-        const totalLoaded = Math.min(sumProgress(progress), file.size);
-        const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.1);
-        const speed = totalLoaded / elapsedSeconds;
-        const remainingBytes = Math.max(file.size - totalLoaded, 0);
-        const remainingSeconds = speed > 0 ? remainingBytes / speed : 0;
-        const eta = remainingSeconds > 1 ? ` · reste ~${Math.ceil(remainingSeconds)} s` : '';
-        setProgress((totalLoaded / file.size) * 100, totalLoaded, file.size, `${uploadConcurrency} flux · ${formatBytes(speed)}/s${eta}`);
-      };
-
-      xhr.onerror = () => reject(new Error('Erreur réseau pendant l’envoi d’un morceau.'));
-      xhr.onload = () => {
-        activeRequests.delete(xhr);
-        let payload = {};
-        try { payload = JSON.parse(xhr.responseText || '{}'); }
-        catch (_error) { payload = {}; }
-
-        if (xhr.status < 200 || xhr.status >= 300) {
-          const error = new Error(uploadErrorMessage(xhr, payload));
-          error.status = xhr.status;
-          reject(error);
-          return;
-        }
-        progress[chunkIndex] = end - start;
-        resolve(payload);
-      };
-      xhr.onabort = () => reject(new Error('Upload annulé.'));
-      xhr.send(body);
-    });
-  }
-
-  async function completeUpload(uploadId, file) {
-    progressLabel.textContent = 'Finalisation';
-    setProgress(100, file.size, file.size, 'Assemblage du fichier sur le serveur…');
-    const response = await fetch('/api/transfers/complete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uploadId })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || `Finalisation impossible HTTP ${response.status}.`);
-    return payload;
-  }
-
-  function uploadClassic(file) {
-    return new Promise((resolve, reject) => {
-      const body = new FormData();
-      body.append('file', file);
-      body.append('ttlMinutes', ttlMinutes.value);
-      body.append('deleteAfterDownload', deleteAfterDownload.checked ? 'true' : 'false');
-
-      const xhr = new XMLHttpRequest();
-      activeRequests.add(xhr);
-      const startedAt = performance.now();
-      xhr.open('POST', '/api/transfers');
+      const untrack = trackRequest(xhr);
+      xhr.open(method, url);
+      Object.entries(headers).forEach(([name, value]) => xhr.setRequestHeader(name, value));
       xhr.responseType = 'text';
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
-        const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.1);
-        const speed = event.loaded / elapsedSeconds;
-        setProgress((event.loaded / event.total) * 100, event.loaded, event.total, `Mode classique · ${formatBytes(speed)}/s`);
+        state.partProgress.set(key, event.loaded);
+        reportProgress();
       };
 
-      xhr.onerror = () => reject(new Error('Erreur réseau pendant l’upload.'));
+      xhr.onerror = () => {
+        untrack();
+        reject(new Error('Erreur réseau pendant l’envoi. Vérifie la configuration CORS du stockage (méthodes GET, PUT, HEAD autorisées).'));
+      };
+      xhr.onabort = () => {
+        untrack();
+        reject(new Error('Envoi annulé.'));
+      };
       xhr.onload = () => {
-        activeRequests.delete(xhr);
-        let payload = {};
-        try { payload = JSON.parse(xhr.responseText || '{}'); }
-        catch (_error) { payload = {}; }
+        untrack();
         if (xhr.status < 200 || xhr.status >= 300) {
-          const error = new Error(uploadErrorMessage(xhr, payload));
-          error.status = xhr.status;
-          reject(error);
+          let detail = '';
+          try {
+            detail = JSON.parse(xhr.responseText || '{}').error || '';
+          } catch {
+            detail = String(xhr.responseText || '').slice(0, 160);
+          }
+          reject(new Error(detail || `Envoi refusé par le stockage (HTTP ${xhr.status}). Si l’URL pré-signée a expiré, relance l’envoi.`));
           return;
         }
-        resolve(payload);
+        state.partProgress.set(key, body.size || 0);
+        const etag = xhr.getResponseHeader('ETag') || xhr.getResponseHeader('etag');
+        resolve({ etag: etag ? etag.replace(/"/g, '') : '' });
       };
       xhr.send(body);
     });
   }
 
-  async function uploadFileInChunks(file) {
-    const uploadId = makeUploadId();
-    const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
-    const startedAt = performance.now();
-    const token = makeUploadId();
-    currentUploadToken = token;
-    const progress = new Array(totalChunks).fill(0);
-    let nextIndex = 0;
-    let completed = 0;
+  async function api(path, { method = 'GET', body, deleteKey } = {}) {
+    const headers = {};
+    if (body) headers['Content-Type'] = 'application/json';
+    if (deleteKey) headers['X-Delete-Key'] = deleteKey;
+    const response = await fetch(path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store'
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `Erreur serveur HTTP ${response.status}.`);
+    return payload;
+  }
 
-    progressLabel.textContent = 'Upload rapide';
-    setProgress(0, 0, file.size, `${totalChunks} morceaux · ${uploadConcurrency} envois parallèles`);
+  async function fetchParts(id, deleteKey, fromPart) {
+    return api(`/api/transfers/${encodeURIComponent(id)}/parts`, {
+      method: 'POST',
+      body: { fromPart },
+      deleteKey
+    });
+  }
 
-    async function worker() {
-      while (nextIndex < totalChunks) {
-        if (currentUploadToken !== token) throw new Error('Upload annulé.');
-        const chunkIndex = nextIndex;
-        nextIndex += 1;
-        await sendChunk({ file, uploadId, chunkIndex, totalChunks, progress, startedAt, token });
-        completed += 1;
-        progressLabel.textContent = `Upload rapide · ${completed}/${totalChunks}`;
+  async function sendBytes(created, file) {
+    const upload = created.upload || {};
+    state.startedAt = performance.now();
+    state.fileSize = file.size;
+    state.partProgress.clear();
+    state.partsDone = 0;
+
+    if (upload.mode === 'single' || upload.mode === 'local-single') {
+      state.totalParts = 1;
+      const url = upload.mode === 'single' ? upload.single.url : upload.url;
+      const safeType = created.mimeType || 'application/octet-stream';
+      const headers = upload.mode === 'local-single' ? { 'X-Delete-Key': created.deleteKey } : { 'Content-Type': safeType };
+      progressLabel.textContent = upload.mode === 'local-single' ? 'Envoi vers le serveur' : 'Envoi direct au stockage';
+      await put(url, file, { key: 'single', headers });
+      return [];
+    }
+
+    if (upload.mode === 'multipart') {
+      const totalParts = Number(upload.parts);
+      const partSize = Number(upload.partSize);
+      state.totalParts = totalParts;
+      progressLabel.textContent = `Envoi en ${totalParts} morceaux`;
+
+      const urls = new Map();
+      const results = new Array(totalParts);
+      let nextPart = 1;
+
+      const first = await fetchParts(created.id, created.deleteKey, 1);
+      first.parts.forEach((part) => urls.set(part.partNumber, part.url));
+
+      async function worker() {
+        for (;;) {
+          if (state.cancelled) throw new Error('Envoi annulé.');
+          const index = nextPart;
+          nextPart += 1;
+          if (index > totalParts) return;
+
+          if (!urls.has(index)) {
+            const extra = await fetchParts(created.id, created.deleteKey, index);
+            extra.parts.forEach((part) => urls.set(part.partNumber, part.url));
+          }
+
+          const start = (index - 1) * partSize;
+          const end = Math.min(file.size, start + partSize);
+          const blob = file.slice(start, end);
+          const result = await put(urls.get(index), blob, { key: `part-${index}`, headers: { 'Content-Type': 'application/octet-stream' } });
+          results[index - 1] = { partNumber: index, etag: result.etag || '' };
+          state.partProgress.set(`part-${index}`, blob.size);
+          state.partsDone += 1;
+          reportProgress();
+        }
       }
+
+      const parallel = Math.max(1, Math.min(Number(upload.maxParallel) || 3, totalParts, config.maxParallelUploads || 3));
+      await Promise.all(Array.from({ length: parallel }, worker));
+      return results.filter(Boolean);
     }
 
-    const workers = Array.from({ length: Math.min(uploadConcurrency, totalChunks) }, () => worker());
-    await Promise.all(workers);
-    setProgress(100, file.size, file.size, 'Tous les morceaux sont envoyés.');
-    return completeUpload(uploadId, file);
+    throw new Error(`Mode d’envoi inconnu : ${upload.mode || 'absent'}. Le serveur n’est peut-être pas à jour.`);
   }
 
-  function showResult(payload, file) {
-    setProgress(100, file.size, file.size, 'QR code généré');
-    progressLabel.textContent = 'Upload terminé';
-    saveTransferToLocalDashboard(payload);
+  async function notifyDiscord(payload) {
+    if (!config.discordConfigured) {
+      resultDiscord.textContent = 'non configuré';
+      return;
+    }
+    resultDiscord.textContent = 'en cours';
+    try {
+      const response = await fetch('/api/notify/discord', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Delete-Key': payload.deleteKey || '' },
+        body: JSON.stringify({ id: payload.id })
+      });
+      const body = await response.json().catch(() => ({}));
+      resultDiscord.textContent = response.ok && body.sent ? 'envoyé' : 'échec';
+    } catch {
+      resultDiscord.textContent = 'échec';
+    }
+  }
 
-    const expiry = new Date(payload.expiresAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
-    qrImage.src = payload.qrDataUrl;
+  async function showResult(payload) {
+    state.lastPayload = payload;
+    progressLabel.textContent = 'Transfert prêt';
+    setProgress(100, { loaded: payload.size, total: payload.size, detail: 'terminé', eta: 'en ligne' });
+    progressEta.className = 'chip chip-jade';
+
+    renderCodeDisplay(resultCodeSlots, payload.code);
     resultName.textContent = payload.fileName;
-    resultCode.textContent = payload.code || payload.id;
-    resultDiscord.textContent = payload.discord && payload.discord.sent ? 'Envoyé' : (payload.discordConfigured ? 'Non envoyé' : 'Non configuré');
-    resultSize.textContent = payload.sizeHuman || formatBytes(payload.size);
-    resultExpiry.textContent = expiry;
-    resultCleanup.textContent = payload.deleteAfterDownload ? 'Après le premier téléchargement' : 'À expiration';
-    shareLink.textContent = payload.shareUrl;
-    shareLink.title = payload.shareUrl;
-    copyButton.dataset.url = payload.shareUrl;
+    resultSize.textContent = payload.sizeHuman;
+    resultExpiry.textContent = window.DropQR.formatDate(payload.expiresAt);
+    resultCleanup.textContent = payload.deleteAfterDownload ? 'Après le premier téléchargement' : 'À l’expiration';
+    shareLink.value = payload.shareUrl;
     openLink.href = payload.shareUrl;
+    downloadFile.href = payload.downloadUrl;
+    copyCode.dataset.copy = payload.code;
+    copyLink.dataset.copy = payload.shareUrl;
+    resultStatusText.textContent = '';
 
-    if (payload.sandboxWarning) {
-      sandboxWarning.classList.remove('hidden');
-      sandboxWarning.textContent = payload.sandboxWarning;
+    qrHolder.innerHTML = '<span class="qr-sweep" aria-hidden="true"></span>';
+    try {
+      const svg = await fetch(`/api/transfers/${encodeURIComponent(payload.id)}/qr.svg`, { cache: 'no-store' }).then((r) => r.text());
+      qrHolder.insertAdjacentHTML('afterbegin', svg);
+      qrHolder.dataset.svg = svg;
+    } catch {
+      qrHolder.insertAdjacentHTML('afterbegin', '<p class="note">QR indisponible.</p>');
     }
 
-    emptyState.style.display = 'none';
-    result.classList.add('visible');
-    setStatus('C’est prêt. Le code et le QR peuvent être partagés.', 'success');
+    if (state.stopCountdown) state.stopCountdown();
+    state.stopCountdown = startCountdown(countdown, payload.expiresAt);
+
+    saveToDashboard(payload);
+    emptyState.hidden = true;
+    result.hidden = false;
+    result.scrollIntoView({ behavior: window.DropQR.reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    toast(`Transfert ${payload.code} en ligne.`);
+    notifyDiscord(payload);
   }
 
-  fileInput.addEventListener('change', updateFileLabel);
-  clearFile.addEventListener('click', clearSelectedFile);
+  function saveToDashboard(payload) {
+    try {
+      const list = JSON.parse(localStorage.getItem('dropqr.transfers') || '[]');
+      const filtered = list.filter((item) => item.id !== payload.id);
+      filtered.unshift({
+        id: payload.id,
+        code: payload.code,
+        deleteKey: payload.deleteKey || '',
+        fileName: payload.fileName,
+        sizeHuman: payload.sizeHuman,
+        shareUrl: payload.shareUrl,
+        downloadUrl: payload.downloadUrl,
+        expiresAt: payload.expiresAt,
+        deleteAfterDownload: payload.deleteAfterDownload,
+        createdAt: new Date().toISOString()
+      });
+      localStorage.setItem('dropqr.transfers', JSON.stringify(filtered.slice(0, 60)));
+    } catch {
+      /* stockage local indisponible : ce n'est pas bloquant */
+    }
+  }
 
-  ['dragenter', 'dragover'].forEach((eventName) => {
-    dropzone.addEventListener(eventName, (event) => {
+  /* -------------------------------- formulaire ----------------------------- */
+
+  ['dragenter', 'dragover'].forEach((name) => {
+    dropzone.addEventListener(name, (event) => {
       event.preventDefault();
-      if (!uploadInProgress) dropzone.classList.add('dragover');
+      if (!state.sending) dropzone.classList.add('is-dragover');
     });
   });
 
-  ['dragleave', 'drop'].forEach((eventName) => {
-    dropzone.addEventListener(eventName, (event) => {
+  ['dragleave', 'drop'].forEach((name) => {
+    dropzone.addEventListener(name, (event) => {
       event.preventDefault();
-      dropzone.classList.remove('dragover');
+      dropzone.classList.remove('is-dragover');
     });
   });
 
   dropzone.addEventListener('drop', (event) => {
-    const file = event.dataTransfer.files[0];
-    if (!file || uploadInProgress) return;
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    fileInput.files = dataTransfer.files;
-    updateFileLabel();
+    const file = event.dataTransfer && event.dataTransfer.files[0];
+    if (!file || state.sending) return;
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    fileInput.files = transfer.files;
+    updateFileUi();
+    setStatus('');
+  });
+
+  dropzone.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      fileInput.click();
+    }
+  });
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    updateFileUi();
+    setStatus('');
+  });
+
+  clearFile.addEventListener('click', () => {
+    if (state.sending) return;
+    fileInput.value = '';
+    updateFileUi();
+    resetProgress();
+    setStatus('');
+  });
+
+  function cancelUpload() {
+    state.cancelled = true;
+    state.requests.forEach((xhr) => {
+      try {
+        xhr.abort();
+      } catch {
+        /* déjà terminé */
+      }
+    });
+    state.requests.clear();
+    setStatus('Envoi annulé. Les morceaux déjà reçus seront purgés automatiquement.', 'error');
+    toast('Envoi annulé.', 'error');
+  }
+
+  sendButton.addEventListener('click', (event) => {
+    if (!state.sending) return;
+    event.preventDefault();
+    cancelUpload();
   });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const file = fileInput.files[0];
-    if (!file || uploadInProgress) return;
+    if (state.sending) return;
+    const file = currentFile();
+    if (!file) return;
+    if (window.DropQR.storageUnavailable) return;
 
-    result.classList.remove('visible');
-    sandboxWarning.classList.add('hidden');
-    emptyState.style.display = 'grid';
-    setStatus('Upload en cours… garde cette page ouverte.');
-    uploadInProgress = true;
-    sendButton.disabled = true;
+    state.sending = true;
+    state.cancelled = false;
+    state.requests.clear();
+    result.hidden = true;
+    emptyState.hidden = false;
+    progressCard.hidden = false;
+    sendLabel.textContent = 'Annuler l’envoi';
+    sendButton.disabled = false;
     clearFile.disabled = true;
-    progressLabel.textContent = 'Préparation';
-    setProgress(0, 0, file.size, `Préparation des morceaux de ${formatBytes(chunkSize)}…`);
+    setStatus('Préparation du transfert…');
+    resetProgress();
 
     try {
-      let payload;
-      if (!backendReachable) throw new Error('Backend API indisponible sur ce domaine.');
-      if (chunkedUploadAvailable) {
-        payload = await uploadFileInChunks(file);
-      } else if (file.size <= 40 * 1024 * 1024) {
-        progressLabel.textContent = 'Upload classique';
-        payload = await uploadClassic(file);
-      } else {
-        throw new Error('Backend déployé pas à jour. Redéploie la dernière version.');
-      }
-      showResult(payload, file);
+      const created = await api('/api/transfers', {
+        method: 'POST',
+        body: {
+          fileName: file.name,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          ttlMinutes: ttlMinutes.value,
+          deleteAfterDownload: deleteAfterDownload.checked
+        }
+      });
+
+      setStatus(`Envoi de ${formatBytes(file.size)} (mode ${created.upload.mode})…`);
+      const parts = await sendBytes(created, file);
+
+      const completed = await api(`/api/transfers/${encodeURIComponent(created.id)}/complete`, {
+        method: 'POST',
+        body: { parts },
+        deleteKey: created.deleteKey
+      });
+
+      setStatus('Transfert enregistré. Le lien est actif.', 'success');
+      await showResult({ ...created, ...completed, deleteKey: created.deleteKey });
     } catch (error) {
-      setStatus(error.message || 'Upload impossible.', 'error');
-      progressLabel.textContent = 'Upload interrompu';
-      progressSpeed.textContent = backendReachable ? 'Le fichier n’a pas été enregistré.' : 'Backend API non détecté.';
+      const message = error.message || 'Envoi impossible.';
+      setStatus(message, 'error');
+      progressLabel.textContent = 'Envoi interrompu';
+      progressSpeed.textContent = message;
+      toast(message, 'error');
     } finally {
-      activeRequests.forEach((xhr) => { try { xhr.abort(); } catch (_error) {} });
-      activeRequests = new Set();
-      uploadInProgress = false;
-      currentUploadToken = null;
+      state.sending = false;
+      sendLabel.textContent = 'Envoyer le fichier';
       clearFile.disabled = false;
-      sendButton.disabled = !fileInput.files[0];
-    }
-  });
-
-  copyButton.addEventListener('click', async () => {
-    const url = copyButton.dataset.url;
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      copyButton.textContent = 'Copié';
-      setTimeout(() => { copyButton.textContent = 'Copier'; }, 1400);
-    } catch (_error) {
-      window.prompt('Copie le lien:', url);
+      updateFileUi();
     }
   });
 
   newTransfer.addEventListener('click', () => {
-    if (uploadInProgress) return;
-    result.classList.remove('visible');
-    emptyState.style.display = 'grid';
-    clearSelectedFile();
-    fileInput.focus();
+    if (state.sending) return;
+    result.hidden = true;
+    emptyState.hidden = false;
+    fileInput.value = '';
+    resetProgress();
+    setStatus('');
+    updateFileUi();
+    dropzone.focus();
   });
 
-  updateFileLabel();
-  resetProgress();
-  loadConfig();
+  downloadQr.addEventListener('click', () => {
+    const svg = qrHolder.dataset.svg;
+    if (!svg) {
+      toast('Le QR n’est pas encore prêt.', 'error');
+      return;
+    }
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dropqr-${state.lastPayload ? state.lastPayload.code : 'transfert'}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  copyCode.addEventListener('click', async () => {
+    if (!state.lastPayload) return;
+    const ok = await copyText(state.lastPayload.code);
+    toast(ok ? `Code ${state.lastPayload.code} copié.` : 'Copie impossible.', ok ? 'success' : 'error');
+  });
+
+  copyLink.addEventListener('click', async () => {
+    if (!state.lastPayload) return;
+    const ok = await copyText(state.lastPayload.shareUrl);
+    toast(ok ? 'Lien copié.' : 'Copie impossible.', ok ? 'success' : 'error');
+  });
+
+  if (config.warning) setStatus(config.warning, 'error');
+  updateFileUi();
 })();

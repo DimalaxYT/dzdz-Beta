@@ -1,4 +1,17 @@
-# Netlify peut afficher les pages statiques, mais ne lance pas le backend Express.
-# Pour DropQR complet avec upload/téléchargement, utilise Render, Railway, Fly.io ou un VPS.
 [build]
+  # Le site est statique : aucun build Node n'est nécessaire côté Netlify.
   publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
