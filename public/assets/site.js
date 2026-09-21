@@ -7,16 +7,22 @@
   try { localStorage.removeItem('dropqr.transfers'); } catch (_error) {}
 
   const contactLinks = [...document.querySelectorAll('[data-discord-contact]')];
-  if (contactLinks.length) {
+  const maxSizeLabels = [...document.querySelectorAll('[data-max-file-size]')];
+  if (contactLinks.length || maxSizeLabels.length) {
     fetch('/api/config', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
       .then((config) => {
-        if (!config || !config.discordContactUrl) return;
-        contactLinks.forEach((link) => {
-          link.href = config.discordContactUrl;
-          link.hidden = false;
-          link.textContent = 'Discord';
-        });
+        if (!config) return;
+        if (config.discordContactUrl) {
+          contactLinks.forEach((link) => {
+            link.href = config.discordContactUrl;
+            link.hidden = false;
+            link.textContent = 'Discord';
+          });
+        }
+        if (config.maxFileSizeHuman) {
+          maxSizeLabels.forEach((label) => { label.textContent = config.maxFileSizeHuman; });
+        }
       })
       .catch(() => {});
   }

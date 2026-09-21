@@ -10,9 +10,14 @@ const { pipeline } = require('stream/promises');
 const path = require('path');
 
 const app = express();
-app.set('trust proxy', true);
+const trustProxyRaw = String(process.env.TRUST_PROXY || '1').trim().toLowerCase();
+const trustProxy = trustProxyRaw === 'false'
+  ? false
+  : (/^\d+$/.test(trustProxyRaw) ? Number(trustProxyRaw) : 1);
+app.set('trust proxy', trustProxy);
+app.disable('x-powered-by');
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -28,7 +33,11 @@ const DISCORD_INVITE_REFRESH_HOURS = Math.min(168, Math.max(1, parsePositiveEnvN
 const DEFAULT_TTL_MINUTES = parsePositiveEnvNumber('DEFAULT_TTL_MINUTES', 15);
 const MAX_TTL_MINUTES = Math.max(DEFAULT_TTL_MINUTES, parsePositiveEnvNumber('MAX_TTL_MINUTES', 1440)); // 24h par défaut
 const MAX_FILE_SIZE_BYTES = parseMaxFileSize(); // null = pas de limite imposée par l'app
-const RECOMMENDED_CHUNK_SIZE_BYTES = Math.max(1024 * 1024, parsePositiveEnvNumber('CHUNK_SIZE_MB', 16) * 1024 * 1024);
+const MAX_CHUNK_SIZE_BYTES = 256 * 1024 * 1024;
+const RECOMMENDED_CHUNK_SIZE_BYTES = Math.min(
+  MAX_CHUNK_SIZE_BYTES,
+  Math.max(1024 * 1024, parsePositiveEnvNumber('CHUNK_SIZE_MB', 16) * 1024 * 1024)
+);
 const UPLOAD_CONCURRENCY = Math.min(8, Math.max(1, Math.floor(parsePositiveEnvNumber('UPLOAD_CONCURRENCY', 5))));
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -37,8 +46,8 @@ const FILES_DIR = path.join(STORAGE_DIR, 'files');
 const CHUNKS_DIR = path.join(STORAGE_DIR, 'chunks');
 const DB_PATH = path.join(STORAGE_DIR, 'db.json');
 const discordDeleteTimers = new Map();
+const activeDownloads = new Set();
 const MAX_TIMEOUT_MS = 2_147_000_000;
-const MAX_CHUNK_SIZE_BYTES = 256 * 1024 * 1024;
 
 let db = { transfers: {} };
 let dbWriteQueue = Promise.resolve();
@@ -50,25 +59,29 @@ function parsePositiveEnvNumber(name, fallback) {
 }
 
 function parseMaxFileSize() {
+  const fallback = 10 * 1024 ** 3;
   // Par défaut, DropQR accepte jusqu'à 10 Go par transfert.
   // Les limites réelles peuvent encore venir du disque ou de l'hébergeur.
-  if (!process.env.MAX_FILE_SIZE_MB && !process.env.MAX_FILE_SIZE) return 10 * 1024 ** 3;
+  if (!process.env.MAX_FILE_SIZE_MB && !process.env.MAX_FILE_SIZE) return fallback;
 
   const unlimitedValues = new Set(['0', 'none', 'no', 'false', 'unlimited', 'illimite', 'illimité']);
   if (process.env.MAX_FILE_SIZE && unlimitedValues.has(String(process.env.MAX_FILE_SIZE).trim().toLowerCase())) return null;
 
   if (process.env.MAX_FILE_SIZE_MB) {
     const mb = Number(process.env.MAX_FILE_SIZE_MB);
-    return Number.isFinite(mb) && mb > 0 ? Math.floor(mb * 1024 * 1024) : null;
+    if (Number.isFinite(mb) && mb > 0) return Math.floor(mb * 1024 * 1024);
+    // Une variable MB invalide ne doit jamais désactiver la limite.
+    console.warn('MAX_FILE_SIZE_MB invalide: tentative avec MAX_FILE_SIZE ou valeur par défaut.');
   }
 
   const raw = String(process.env.MAX_FILE_SIZE || '').trim().toLowerCase();
   const match = raw.match(/^(\d+(?:\.\d+)?)(b|kb|mb|gb|tb)?$/);
-  if (!match) return 10 * 1024 ** 3;
+  if (!match) return fallback;
   const value = Number(match[1]);
   const unit = match[2] || 'b';
   const factor = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3, tb: 1024 ** 4 }[unit];
-  return Math.floor(value * factor);
+  const bytes = value * factor;
+  return Number.isSafeInteger(Math.floor(bytes)) && bytes > 0 ? Math.floor(bytes) : fallback;
 }
 
 function now() {
@@ -124,6 +137,13 @@ function escapeHtml(value) {
 function cleanOriginalName(name) {
   const base = path.basename(String(name || 'fichier'));
   return base.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180) || 'fichier';
+}
+
+function normalizeMimeType(value) {
+  const raw = String(value || '').split(';', 1)[0].trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(raw)
+    ? raw
+    : 'application/octet-stream';
 }
 
 function storedFilePath(storedName) {
@@ -215,6 +235,7 @@ function safeUploadId(value) {
 
 async function buildTransferResponse(req, meta, deleteKey) {
   const baseUrl = getBaseUrl(req);
+  const mimeType = normalizeMimeType(meta.mimeType);
   const shareUrl = `${baseUrl}${getReceivePath(meta)}`;
   const downloadUrl = `${baseUrl}/download/${encodeURIComponent(meta.id)}`;
   const previewUrl = `${baseUrl}/view/${encodeURIComponent(meta.id)}`;
@@ -230,7 +251,7 @@ async function buildTransferResponse(req, meta, deleteKey) {
     code: meta.code,
     deleteKey,
     fileName: meta.originalName,
-    mimeType: meta.mimeType,
+    mimeType,
     size: meta.size,
     sizeHuman: formatBytes(meta.size),
     createdAt: new Date(meta.createdAt).toISOString(),
@@ -241,7 +262,7 @@ async function buildTransferResponse(req, meta, deleteKey) {
     shareUrl,
     downloadUrl,
     previewUrl,
-    canPreview: isVideoMime(meta.mimeType),
+    canPreview: isVideoMime(mimeType),
     qrDataUrl,
     discordConfigured: Boolean(DISCORD_WEBHOOK_URL && DISCORD_NOTIFY),
     sandboxPreview: isSandboxPreview(req),
@@ -425,7 +446,7 @@ async function registerStoredFile(req, { originalName, storedName, mimeType, siz
     code: makeTransferCode(),
     originalName: cleanOriginalName(originalName),
     storedName,
-    mimeType: mimeType || 'application/octet-stream',
+    mimeType: normalizeMimeType(mimeType),
     size: Number(size || 0),
     createdAt: now(),
     expiresAt: now() + ttlMinutes * 60 * 1000,
@@ -522,7 +543,17 @@ async function deleteTransfer(id, reason = 'cleanup') {
   return true;
 }
 
+let cleanupPromise = null;
+
 async function cleanupExpiredTransfers() {
+  if (cleanupPromise) return cleanupPromise;
+  cleanupPromise = performCleanupExpiredTransfers().finally(() => {
+    cleanupPromise = null;
+  });
+  return cleanupPromise;
+}
+
+async function performCleanupExpiredTransfers() {
   const timestamp = now();
   const transfers = transferStore();
   const ids = Object.keys(transfers);
@@ -789,7 +820,7 @@ async function assembleChunkUpload(req, uploadId) {
     }
 
     const originalName = cleanOriginalName(meta.originalName);
-    const mimeType = meta.mimeType || 'application/octet-stream';
+    const mimeType = normalizeMimeType(meta.mimeType);
     const ttlMinutes = parseTtlMinutes(meta.ttlMinutes);
     const deleteAfterDownload = parseDeleteAfterDownload(meta.deleteAfterDownload);
     const ext = path.extname(originalName || '').slice(0, 24).replace(/[^a-zA-Z0-9.]/g, '');
@@ -841,7 +872,7 @@ async function uploadChunk(req, res, next) {
     const totalChunks = Number(req.body.totalChunks);
     const totalSize = Number(req.body.totalSize);
     const originalName = cleanOriginalName(req.body.fileName);
-    const mimeType = req.body.mimeType || req.file.mimetype || 'application/octet-stream';
+    const mimeType = normalizeMimeType(req.body.mimeType || req.file.mimetype);
     const ttlMinutes = parseTtlMinutes(req.body.ttlMinutes);
     const deleteAfterDownload = parseDeleteAfterDownload(req.body.deleteAfterDownload);
 
@@ -1019,7 +1050,8 @@ app.get('/view/:id', async (req, res) => {
     await deleteTransfer(id, 'expiration-preview');
     return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
   }
-  if (!isVideoMime(meta.mimeType)) {
+  const mimeType = normalizeMimeType(meta.mimeType);
+  if (!isVideoMime(mimeType)) {
     return res.status(415).send(renderMessagePage('Aperçu indisponible', 'Seules les vidéos peuvent être lues directement dans le navigateur. Utilise le bouton de téléchargement.'));
   }
 
@@ -1031,7 +1063,6 @@ app.get('/view/:id', async (req, res) => {
 
   const stat = await fsp.stat(filePath);
   const total = stat.size;
-  const mimeType = meta.mimeType || 'application/octet-stream';
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', mimeType);
@@ -1084,12 +1115,18 @@ app.get('/download/:id', async (req, res) => {
     return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
   }
 
+  if (meta.deleteAfterDownload && activeDownloads.has(id)) {
+    return res.status(409).send(renderMessagePage('Téléchargement déjà en cours', 'Ce transfert est déjà en train d’être récupéré. Réessaie dans quelques instants.'));
+  }
+
+  if (meta.deleteAfterDownload) activeDownloads.add(id);
   meta.downloads = Number(meta.downloads || 0) + 1;
   meta.lastDownloadAt = now();
   await saveDb().catch((error) => console.error('Erreur compteur téléchargement:', error));
 
   res.setHeader('Cache-Control', 'no-store');
   res.download(filePath, meta.originalName, async (error) => {
+    if (meta.deleteAfterDownload) activeDownloads.delete(id);
     if (error) {
       if (!res.headersSent) console.error('Erreur téléchargement:', error);
       return;
@@ -1106,6 +1143,9 @@ app.use((req, res) => {
 });
 
 app.use((error, _req, res, _next) => {
+  if (error.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON invalide.' });
+  }
   console.error(error);
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
@@ -1119,11 +1159,12 @@ app.use((error, _req, res, _next) => {
 
 function publicTransferPayload(req, meta) {
   const baseUrl = getBaseUrl(req);
+  const mimeType = normalizeMimeType(meta.mimeType);
   return {
     id: meta.id,
     code: meta.code,
     fileName: meta.originalName,
-    mimeType: meta.mimeType,
+    mimeType,
     size: meta.size,
     sizeHuman: formatBytes(meta.size),
     createdAt: new Date(meta.createdAt).toISOString(),
@@ -1134,7 +1175,7 @@ function publicTransferPayload(req, meta) {
     shareUrl: `${baseUrl}${getReceivePath(meta)}`,
     downloadUrl: `${baseUrl}/download/${encodeURIComponent(meta.id)}`,
     previewUrl: `${baseUrl}/view/${encodeURIComponent(meta.id)}`,
-    canPreview: isVideoMime(meta.mimeType)
+    canPreview: isVideoMime(mimeType)
   };
 }
 
@@ -1165,14 +1206,14 @@ function renderSharePage(req, meta) {
           <span>${meta.deleteAfterDownload ? 'Suppression après le premier téléchargement.' : 'Suppression automatique à expiration.'}</span>
         </div>
       </section>
-      ${isVideoMime(meta.mimeType) ? `<video class="video-preview" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
+      ${payload.canPreview ? `<video class="video-preview" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
       <a class="btn primary share-download" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
       ${isSandboxPreview(req) ? '<div class="warning" style="margin-top:16px">La preview Arena peut demander un token de sécurité à un téléphone externe. Utilise l’URL Render ou le réseau local pour un vrai scan.</div>' : ''}
       <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=8" defer></script>
+  <script src="/assets/site.js?v=9" defer></script>
 </body>
 </html>`;
 }
@@ -1197,7 +1238,7 @@ function renderMessagePage(title, message) {
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=8" defer></script>
+  <script src="/assets/site.js?v=9" defer></script>
 </body>
 </html>`;
 }

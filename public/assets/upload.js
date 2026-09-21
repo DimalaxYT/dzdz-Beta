@@ -1,6 +1,8 @@
 (() => {
   let chunkSize = 8 * 1024 * 1024;
   let uploadConcurrency = 5;
+  let maxFileSizeBytes = null;
+  let maxFileSizeHuman = '';
 
   const form = document.getElementById('uploadForm');
   const fileInput = document.getElementById('fileInput');
@@ -90,7 +92,8 @@
 
   function updateFileLabel() {
     const file = fileInput.files[0];
-    sendButton.disabled = !file || uploadInProgress;
+    const tooLarge = Boolean(file && maxFileSizeBytes && file.size > maxFileSizeBytes);
+    sendButton.disabled = !file || uploadInProgress || tooLarge;
 
     if (!file) {
       dropTitle.textContent = 'Dépose ton fichier ici';
@@ -105,6 +108,10 @@
     fileChipName.textContent = file.name;
     fileChipSize.textContent = `${formatBytes(file.size)} · ${uploadConcurrency} envois parallèles · morceaux de ${formatBytes(chunkSize)}`;
     fileChip.classList.add('visible');
+    if (tooLarge) {
+      dropSubtitle.textContent = `Fichier trop volumineux. Limite actuelle : ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`;
+      setStatus(`Ce fichier dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`, 'error');
+    }
   }
 
   function clearSelectedFile() {
@@ -122,12 +129,19 @@
       const config = await response.json();
       backendReachable = true;
       chunkedUploadAvailable = config.chunkedUpload === true;
+      if (Number(config.maxFileSizeBytes) > 0) {
+        maxFileSizeBytes = Number(config.maxFileSizeBytes);
+        maxFileSizeHuman = config.maxFileSizeHuman || formatBytes(maxFileSizeBytes);
+      } else {
+        maxFileSizeBytes = null;
+        maxFileSizeHuman = config.maxFileSizeHuman || '';
+      }
       if (Number(config.recommendedChunkSizeBytes) > 0) chunkSize = Number(config.recommendedChunkSizeBytes);
       if (Number(config.uploadConcurrency) > 0) uploadConcurrency = Math.min(8, Math.max(1, Number(config.uploadConcurrency)));
 
       if (!chunkedUploadAvailable) {
         configNotice.classList.remove('hidden');
-        configNotice.innerHTML = `<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.7.0</code>.`;
+        configNotice.innerHTML = `<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.8.0</code>.`;
       }
       if (config.sandboxWarning) {
         configNotice.classList.remove('hidden');
@@ -350,6 +364,10 @@
     event.preventDefault();
     const file = fileInput.files[0];
     if (!file || uploadInProgress) return;
+    if (maxFileSizeBytes && file.size > maxFileSizeBytes) {
+      setStatus(`Ce fichier dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`, 'error');
+      return;
+    }
 
     result.classList.remove('visible');
     sandboxWarning.classList.add('hidden');
