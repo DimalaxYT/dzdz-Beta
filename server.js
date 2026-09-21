@@ -586,10 +586,15 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/api', apiRateLimiter);
 app.use('/api/transfers', uploadRateLimiter);
-app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), {
-  etag: false,
-  lastModified: false,
-  maxAge: 0
+app.use('/assets', (req, res, next) => {
+  // Les assets sont versionnés dans le HTML: ils peuvent être gardés en cache
+  // sans ralentir les changements de page entre deux écrans.
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+  next();
+}, express.static(path.join(PUBLIC_DIR, 'assets'), {
+  etag: true,
+  lastModified: true,
+  maxAge: '1d'
 }));
 
 function sendPage(res, fileName) {
@@ -1107,7 +1112,7 @@ function renderSharePage(req, meta) {
       <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
     </main>
   </div>
-  <script src="/assets/site.js?v=3" defer></script>
+  <script src="/assets/site.js?v=4" defer></script>
 </body>
 </html>`;
 }
@@ -1131,7 +1136,7 @@ function renderMessagePage(title, message) {
       <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
     </main>
   </div>
-  <script src="/assets/site.js?v=3" defer></script>
+  <script src="/assets/site.js?v=4" defer></script>
 </body>
 </html>`;
 }

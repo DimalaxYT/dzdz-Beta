@@ -2,13 +2,15 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = document.documentElement;
   const parallaxItems = [...document.querySelectorAll('[data-parallax]')];
-  const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .panel, .doc-section .card')];
+  const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .doc-section .card')];
 
   if (!reducedMotion) {
     root.classList.add('motion-ready');
+    const firstViewport = window.innerHeight * .92;
     revealItems.forEach((item, index) => {
       item.classList.add('reveal-item');
-      item.style.setProperty('--reveal-delay', `${Math.min(index, 8) * 45}ms`);
+      item.style.setProperty('--reveal-delay', `${Math.min(index, 8) * 35}ms`);
+      if (item.getBoundingClientRect().top < firstViewport) item.classList.add('is-visible');
     });
   } else {
     revealItems.forEach((item) => item.classList.add('is-visible'));
@@ -27,6 +29,20 @@
   } else {
     revealItems.forEach((item) => item.classList.add('is-visible'));
   }
+
+  const prefetched = new Set();
+  document.querySelectorAll('a[href]').forEach((link) => {
+    const href = link.getAttribute('href');
+    if (!href || !href.startsWith('/') || href.startsWith('//') || href.startsWith('/api/') || link.target) return;
+    link.addEventListener('pointerenter', () => {
+      if (prefetched.has(href)) return;
+      prefetched.add(href);
+      const resource = document.createElement('link');
+      resource.rel = 'prefetch';
+      resource.href = href;
+      document.head.appendChild(resource);
+    }, { passive: true });
+  });
 
   if (reducedMotion || !parallaxItems.length) return;
 
