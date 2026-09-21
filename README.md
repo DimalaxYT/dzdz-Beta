@@ -184,12 +184,28 @@ défilant, compteurs. Tout se désactive si le système demande de réduire les 
 
 ```bash
 npm run check      # analyse syntaxique des 18 fichiers source
-npm test           # 175 vérifications, jouées deux fois : serveur Node, puis fonction Netlify
+npm test           # 178 vérifications, jouées trois fois (voir ci-dessous)
 npm run test:s3    # nécessite : npm install --no-save s3rver
 ```
 
-`npm test` ne demande aucune dépendance supplémentaire. La même suite est rejouée à travers
-`netlify/functions/api.mjs` : c'est le déploiement réel qui est vérifié, pas seulement le serveur local.
+`npm test` ne demande aucune dépendance supplémentaire. La même suite est rejouée trois fois :
+
+| Cible | Ce qui est vérifié |
+| --- | --- |
+| `node scripts/test-suite.mjs` | le serveur Node, métadonnées sur disque |
+| `node scripts/test-suite.mjs --netlify` | le point d'entrée `netlify/functions/api.mjs` |
+| `node scripts/test-suite.mjs --netlify --blobs` | **la configuration de production** : fonction Netlify + Netlify Blobs |
+
+Le troisième mode démarre le serveur Blobs officiel du paquet `@netlify/blobs` (celui utilisé par le CLI
+Netlify) et déclare son contexte comme la plateforme le ferait : les métadonnées sont donc réellement
+écrites et relues via l'API de Netlify, pas sur le disque. C'est ce mode qui a révélé que `store.list()`
+renvoie des pages (`{ blobs }`) et non des entrées — sans lui, le nettoyage automatique n'aurait jamais
+fonctionné en production.
+
+`npm run test:s3` fait tourner un faux serveur S3 (s3rver) et rejoue toute la chaîne multipart, deux
+fois : sur le serveur Node, puis sur la fonction Netlify avec Blobs (configuration réelle du
+déploiement). Les signatures pré-signées sont revérifiées depuis la spécification SigV4 d'AWS, car un
+faux serveur est trop permissif.
 
 Ce qui est contrôlé : rendu des six pages, absence totale d'emoji et de script en ligne, CSP et en-têtes
 de sécurité, génération de 5000 codes, cycle complet (création, envoi, téléchargement comparé octet par

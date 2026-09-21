@@ -8,9 +8,11 @@
  * nettoyage automatique, requêtes Range, limite de débit, vérification de
  * signature S3 (SigV4) et expiration.
  *
- * Deux cibles :
- *   npm test                    → serveur Node (stockage disque)
- *   npm test -- --netlify       → fonction Netlify (point d'entrée du déploiement)
+ * Trois cibles :
+ *   node scripts/test-suite.mjs                          → serveur Node (stockage disque)
+ *   node scripts/test-suite.mjs --netlify                → fonction Netlify
+ *   node scripts/test-suite.mjs --netlify --blobs         → configuration du déploiement réel
+ *                                                          (fonction Netlify + métadonnées Blobs)
  *
  * Usage : npm test
  */
@@ -43,8 +45,31 @@ function check(label, condition, detail = '') {
 }
 
 const TARGET_NETLIFY = process.argv.includes('--netlify');
-if (TARGET_NETLIFY) console.log('Cible : fonction Netlify (netlify/functions/api.mjs)');
-else console.log('Cible : serveur Node (lib/app.mjs)');
+const TARGET_BLOBS = process.argv.includes('--blobs');
+
+/**
+ * Netlify Blobs n'existe que sur la plateforme. Le paquet officiel embarque
+ * cependant le serveur local utilisé par le CLI : on démarre ce serveur et on
+ * déclare son contexte exactement comme Netlify le ferait, ce qui permet de
+ * tester la vraie chaîne de production des métadonnées.
+ */
+let blobsServer = null;
+if (TARGET_BLOBS) {
+  process.env.DROPQR_META = 'blobs';
+  const { BlobsServer } = await import('@netlify/blobs/server');
+  blobsServer = new BlobsServer({
+    directory: path.join(os.tmpdir(), `dropqr-blobs-${process.pid}`),
+    logger: () => {},
+    token: 'jeton-de-test'
+  });
+  const { port } = await blobsServer.start();
+  const address = `http://127.0.0.1:${port}`;
+  process.env.NETLIFY_BLOBS_CONTEXT = Buffer.from(
+    JSON.stringify({ siteID: 'dropqr-tests', token: 'jeton-de-test', apiURL: address, edgeURL: address, uncachedEdgeURL: address })
+  ).toString('base64');
+}
+
+console.log(`Cible : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'} + métadonnées ${TARGET_BLOBS ? 'Netlify Blobs' : 'disque'}`);
 
 await fsp.rm(ROOT, { recursive: true, force: true });
 // `instance` sert aux accès internes (store, purge), y compris en mode Netlify.
@@ -232,6 +257,12 @@ check('un aperçu ne déclenche pas la suppression', (await request(`/api/transf
 
 group('7. Expiration et purge');
 const store = await instance.getStore();
+check(
+  'métadonnées et fichiers ont des backends indépendants',
+  store.metadataKind === (TARGET_BLOBS ? 'blobs' : 'local') && store.objectKind === 'local',
+  `${store.metadataKind} / ${store.objectKind}`
+);
+check('les fichiers restent accessibles sur le disque', typeof store.objectPath('essai.bin') === 'string');
 const expiring = await (await request('/api/transfers', {
   method: 'POST',
   body: { fileName: 'temporaire.bin', size: 1000, mimeType: 'application/octet-stream', ttlMinutes: 30 }
@@ -340,7 +371,11 @@ group('10. Points de contrôle');
 const health = await (await request('/api/health')).json();
 check('santé : version 2.0.0', health.version === '2.0.0', health.version);
 check('santé : mode de stockage', health.storage === 'local', health.storage);
-check('santé : métadonnées sur disque', health.metadata === 'local', health.metadata);
+check(
+  `santé : métadonnées sur ${TARGET_BLOBS ? 'Blobs' : 'disque'}`,
+  health.metadata === (TARGET_BLOBS ? 'blobs' : 'local'),
+  health.metadata
+);
 check('santé : limite annoncée', health.maxFileSizeHuman === '50.0 Mo', health.maxFileSizeHuman);
 const config = await (await request('/api/config')).json();
 check('config : mode d’envoi direct signalé', config.directUpload === false);
@@ -418,6 +453,13 @@ const functionHome = await netlifyFunction(new Request('http://localhost/'), {})
 check('la fonction rend la page d’accueil', functionHome.status === 200 && /<title>/.test(await functionHome.text()));
 const purgeFunction = await import('../netlify/functions/purge.mjs');
 check('tâche planifiée configurée', typeof purgeFunction.config.schedule === 'string', purgeFunction.config.schedule);
+const purgeResponse = await purgeFunction.default();
+const purgeSummary = await purgeResponse.json();
+check(
+  'la tâche planifiée s’exécute et répond',
+  purgeResponse.status === 200 && purgeSummary.ok === true && Number.isFinite(purgeSummary.removed),
+  JSON.stringify(purgeSummary)
+);
 
 /* ------------- 14. Couverture des routes pour le déploiement --------------- */
 
@@ -490,8 +532,9 @@ for (const route of [...pages, '/offline']) {
 }
 
 await fsp.rm(ROOT, { recursive: true, force: true });
+if (blobsServer) await blobsServer.stop();
 
-console.log(`\nCible testée : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'}`);
+console.log(`\nCible testée : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'} (métadonnées : ${TARGET_BLOBS ? 'Netlify Blobs' : 'disque'})`);
 console.log(`${checks - failures}/${checks} vérifications réussies.`);
 console.log(failures === 0 ? 'Tous les tests sont passés.' : `${failures} test(s) en échec.`);
 process.exit(failures === 0 ? 0 : 1);
