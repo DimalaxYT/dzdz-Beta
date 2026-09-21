@@ -87,7 +87,7 @@ La réponse doit contenir :
 
 ```json
 {
-  "version": "1.7.0",
+  "version": "1.7.1",
   "chunkedUpload": true
 }
 ```
@@ -121,6 +121,11 @@ MAX_FILE_SIZE_MB=2048 npm start
 | `MAX_FILE_SIZE_MB` | vide | Limite optionnelle en Mo |
 | `DEFAULT_TTL_MINUTES` | `15` | Durée par défaut |
 | `MAX_TTL_MINUTES` | `1440` | Durée max autorisée |
+| `CHUNK_SIZE_MB` | `16` | Taille de morceau recommandée au frontend |
+| `UPLOAD_CONCURRENCY` | `5` | Nombre de morceaux envoyés en parallèle |
+| `MAX_CHUNK_SIZE_MB` | `2 × CHUNK_SIZE_MB` | Taille max acceptée pour **un** morceau (garde-fou disque) |
+| `STORAGE_DIR` | `./storage` | Dossier de stockage (utile pour monter un volume persistant) |
+| `ORPHAN_GRACE_MINUTES` | `30` | Âge minimum d’un fichier orphelin avant suppression |
 
 ## API
 
@@ -128,6 +133,7 @@ MAX_FILE_SIZE_MB=2048 npm start
 - `GET /api/config`
 - `GET /api/stats`
 - `POST /api/transfers`
+- `POST /api/transfers/complete`
 - `POST /api/transfers/chunk`
 - `GET /api/transfers/:id`
 - `DELETE /api/transfers/:id`
@@ -204,7 +210,7 @@ La réponse doit contenir :
 
 ```json
 {
-  "version": "1.7.0",
+  "version": "1.7.1",
   "discordConfigured": true
 }
 ```
@@ -265,3 +271,41 @@ Si Railway ou le réseau montre des erreurs pendant l’upload, réduis progress
 CHUNK_SIZE_MB=8
 UPLOAD_CONCURRENCY=4
 ```
+
+## Tests
+
+```bash
+npm install
+npm test
+```
+
+La suite démarre des serveurs isolés (port libre + dossier de stockage temporaire) et
+vérifie les régressions connues : identifiants dangereux, aperçu des fichiers uploadés,
+option de suppression, limite de taille, uploads simultanés et nettoyage.
+
+## Version 1.7.1
+
+Correctifs de sécurité et de fiabilité :
+
+- **crash du serveur** : `GET /api/transfers/__proto__` (ou `constructor`, `toString`…)
+  faisait planter le processus. Les transferts sont maintenant stockés dans un objet sans
+  prototype et lus via une vérification stricte, et les routes `async` sont protégées ;
+- **XSS stockée** : un fichier `.html` ou `.svg` uploadé était rendu en ligne par
+  `/view/:id` sur notre origine. L’aperçu en ligne est désormais réservé aux médias
+  (`video/*`, `audio/*`), tout le reste est téléchargé en pièce jointe ;
+- **en-têtes de sécurité** : `X-Content-Type-Options: nosniff` et une CSP sur les pages
+  HTML (aucune ressource externe n’est nécessaire, le site reste affichable en iframe) ;
+- **option « supprimer après le premier téléchargement » ignorée** : sur l’upload par
+  morceaux, la valeur passait par `meta.json` et devenait un booléen, donc toujours
+  vraie. Le parsing accepte maintenant les deux formes ;
+- **limite de 10 Go contournable** : elle était vérifiée sur la taille annoncée par le
+  client. Elle s’applique désormais aux octets réellement reçus, avec en plus une taille
+  maximale par morceau ;
+- **uploads simultanés perdus** : `db.json` était écrit dans un fichier temporaire
+  partagé, d’où des erreurs `ENOENT` et des réponses HTTP 500. Les écritures utilisent
+  un fichier unique et sont sérialisées ;
+- **fichiers supprimés en cours d’upload** : le nettoyage effaçait les fichiers encore
+  en cours d’écriture (upload accepté en 201 puis 404 au téléchargement). Les fichiers
+  en cours sont suivis, et un délai de grâce protège les fichiers récents ;
+- ajout de `.gitignore` (`storage/`, `node_modules/`, `.env`) : les fichiers des
+  utilisateurs ne doivent jamais être versionnés.

@@ -12,7 +12,7 @@ const path = require('path');
 const app = express();
 app.set('trust proxy', true);
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -28,14 +28,44 @@ const RECOMMENDED_CHUNK_SIZE_BYTES = Math.max(1024 * 1024, Number(process.env.CH
 const UPLOAD_CONCURRENCY = Math.min(8, Math.max(1, Number(process.env.UPLOAD_CONCURRENCY || 5)));
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const STORAGE_DIR = path.join(__dirname, 'storage');
+const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || path.join(__dirname, 'storage'));
 const FILES_DIR = path.join(STORAGE_DIR, 'files');
 const CHUNKS_DIR = path.join(STORAGE_DIR, 'chunks');
 const DB_PATH = path.join(STORAGE_DIR, 'db.json');
 const discordDeleteTimers = new Map();
 const MAX_TIMEOUT_MS = 2_147_000_000;
 
-let db = { transfers: {} };
+// Un morceau seul ne doit pas pouvoir saturer le disque: on borne chaque requête.
+const MAX_CHUNK_SIZE_BYTES = Math.max(
+  1024 * 1024,
+  Number(process.env.MAX_CHUNK_SIZE_MB || Math.max(2, Number(process.env.CHUNK_SIZE_MB || 16) * 2)) * 1024 * 1024
+);
+// Délai de grâce avant de supprimer un fichier non référencé dans la DB.
+const ORPHAN_GRACE_MS = Math.max(2, Number(process.env.ORPHAN_GRACE_MINUTES || 30)) * 60 * 1000;
+// Fichiers en cours d'écriture: jamais supprimés par le nettoyage.
+const activeUploads = new Map();
+
+// En-têtes de sécurité appliqués à toutes les réponses HTML.
+// Pas de frame-ancestors / X-Frame-Options: le site doit rester affichable en iframe (preview Arena).
+const HTML_CSP = [
+  "default-src 'self'",
+  "img-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self'",
+  "connect-src 'self'",
+  "media-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'"
+].join('; ');
+
+// Stocke les transferts dans un objet sans prototype: "__proto__" ou "constructor"
+// ne peuvent plus être confondus avec un identifiant de transfert.
+function emptyStore() {
+  return Object.create(null);
+}
+
+let db = { transfers: emptyStore() };
 
 function parseMaxFileSize() {
   // Par défaut, DropQR accepte jusqu'à 10 Go par transfert.
@@ -163,8 +193,22 @@ function isSandboxPreview(req) {
 }
 
 function transferStore() {
-  if (!db.transfers) db.transfers = {};
+  if (!db.transfers) db.transfers = emptyStore();
   return db.transfers;
+}
+
+// Lecture sécurisée: seuls les identifiants réellement présents sont retournés.
+function getTransfer(id) {
+  const transfers = transferStore();
+  if (typeof id !== 'string' || !id) return null;
+  if (!Object.prototype.hasOwnProperty.call(transfers, id)) return null;
+  return transfers[id] || null;
+}
+
+// Express 4 ne capture pas les erreurs des handlers async: sans ça, une
+// exception dans une route fait tomber tout le processus.
+function asyncHandler(handler) {
+  return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 
 function parseTtlMinutes(value) {
@@ -175,8 +219,28 @@ function parseTtlMinutes(value) {
   );
 }
 
+// Supporte "false" (form-data), false (JSON relu depuis meta.json) et l'absence de valeur.
 function parseDeleteAfterDownload(value) {
-  return value !== 'false';
+  if (typeof value === 'boolean') return value;
+  if (value === undefined || value === null || value === '') return true;
+  const normalized = String(value).trim().toLowerCase();
+  return !['false', '0', 'no', 'non', 'off'].includes(normalized);
+}
+
+// Types autorisés à être servis en ligne par /view. Tout le reste (HTML, SVG, XML…)
+// est téléchargé en pièce jointe pour éviter l'exécution de code sur notre origine.
+const INLINE_PREVIEW_TYPES = /^(video|audio)\//i;
+
+function isPreviewableMime(mimeType) {
+  return INLINE_PREVIEW_TYPES.test(String(mimeType || ''));
+}
+
+function markUploadStart(name) {
+  activeUploads.set(name, now());
+}
+
+function markUploadEnd(name) {
+  activeUploads.delete(name);
 }
 
 function safeUploadId(value) {
@@ -384,8 +448,20 @@ async function cleanupStaleChunks() {
   const maxAgeMs = 2 * 60 * 60 * 1000;
   const entries = await fsp.readdir(CHUNKS_DIR, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
+    // Un morceau refusé (trop volumineux) peut laisser un fichier résiduel à la racine.
+    if (entry.isFile()) {
+      const filePath = path.join(CHUNKS_DIR, entry.name);
+      const fileStat = await fsp.stat(filePath).catch(() => null);
+      if (!fileStat || now() - fileStat.mtimeMs > maxAgeMs) {
+        await fsp.rm(filePath, { force: true }).catch(() => {});
+      }
+      continue;
+    }
     if (!entry.isDirectory()) continue;
     const dirPath = path.join(CHUNKS_DIR, entry.name);
+    // Ne jamais toucher à un upload en cours d'assemblage.
+    const assembling = await fsp.access(path.join(dirPath, '.assembling')).then(() => true).catch(() => false);
+    if (assembling) continue;
     const stat = await fsp.stat(dirPath).catch(() => null);
     if (!stat || now() - stat.mtimeMs > maxAgeMs) {
       await fsp.rm(dirPath, { recursive: true, force: true }).catch(() => {});
@@ -401,33 +477,61 @@ async function ensureStorage() {
     const parsed = JSON.parse(raw);
     // Migration de l'ancienne version: db.files -> db.transfers.
     if (parsed && parsed.files && !parsed.transfers) {
-      db = { transfers: parsed.files };
+      db = { transfers: sanitizeStore(parsed.files) };
       for (const item of Object.values(db.transfers)) {
         if (!item.deleteKeyHash) item.deleteKeyHash = null;
         if (!item.code) item.code = makeTransferCode();
       }
       await saveDb();
     } else {
-      db = parsed && typeof parsed === 'object' ? parsed : { transfers: {} };
-      if (!db.transfers) db.transfers = {};
+      db = parsed && typeof parsed === 'object' ? parsed : { transfers: emptyStore() };
+      db.transfers = sanitizeStore(db.transfers);
     }
   } catch (error) {
     if (error.code !== 'ENOENT') console.error('Impossible de lire db.json:', error);
-    db = { transfers: {} };
+    db = { transfers: emptyStore() };
     await saveDb();
   }
 }
 
-async function saveDb() {
+// Recopie les transferts dans un objet sans prototype, en ignorant les entrées invalides.
+function sanitizeStore(raw) {
+  const store = emptyStore();
+  for (const [key, value] of Object.entries(raw || {})) {
+    if (!key || !value || typeof value !== 'object') continue;
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    store[key] = value;
+  }
+  return store;
+}
+
+async function writeDbSnapshot() {
   await fsp.mkdir(STORAGE_DIR, { recursive: true });
-  const tmp = `${DB_PATH}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(db, null, 2));
-  await fsp.rename(tmp, DB_PATH);
+  // Fichier temporaire unique par écriture: deux uploads simultanés ne peuvent
+  // plus se voler le même db.json.tmp (erreur ENOENT au rename).
+  const tmp = `${DB_PATH}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  try {
+    await fsp.writeFile(tmp, JSON.stringify(db, null, 2));
+    await fsp.rename(tmp, DB_PATH);
+  } catch (error) {
+    await fsp.rm(tmp, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+// Les écritures sont sérialisées: la dernière écrit toujours l'état complet de
+// la DB en mémoire, donc aucune mise à jour n'est perdue.
+let dbWriteChain = Promise.resolve();
+
+function saveDb() {
+  const next = dbWriteChain.then(writeDbSnapshot, writeDbSnapshot);
+  dbWriteChain = next.catch(() => {});
+  return next;
 }
 
 async function deleteTransfer(id, reason = 'cleanup') {
   const transfers = transferStore();
-  const meta = transfers[id];
+  const meta = getTransfer(id);
   if (!meta) return false;
   delete transfers[id];
   await saveDb().catch((error) => console.error('Erreur sauvegarde DB:', error));
@@ -453,16 +557,35 @@ async function cleanupExpiredTransfers() {
     }
   }
 
-  // Nettoie les fichiers orphelins éventuels.
+  // Nettoie les fichiers orphelins éventuels, en protégeant les uploads en cours.
+  // Un transfert n'est écrit dans la DB qu'à la fin de l'upload: sans ces gardes,
+  // le nettoyage supprime le fichier d'un upload toujours en cours.
   const knownNames = new Set(Object.values(transfers).map((item) => item.storedName));
   const entries = await fsp.readdir(FILES_DIR).catch(() => []);
+  const orphanGraceLimit = timestamp - ORPHAN_GRACE_MS;
   for (const entry of entries) {
-    if (!knownNames.has(entry)) {
-      await fsp.unlink(path.join(FILES_DIR, entry)).catch(() => {});
-    }
+    if (knownNames.has(entry) || activeUploads.has(entry)) continue;
+    const stat = await fsp.stat(path.join(FILES_DIR, entry)).catch(() => null);
+    if (!stat) continue;
+    if (stat.mtimeMs > orphanGraceLimit) continue;
+    await fsp.unlink(path.join(FILES_DIR, entry)).catch(() => {});
+  }
+
+  // Purge les entrées d'upload abandonnées (requête coupée) pour éviter toute fuite mémoire.
+  const staleUploadLimit = timestamp - 6 * 60 * 60 * 1000;
+  for (const [name, startedAt] of activeUploads) {
+    if (startedAt < staleUploadLimit) activeUploads.delete(name);
   }
 
   await cleanupStaleChunks();
+}
+
+// Suit un fichier en cours d'écriture pour que le nettoyage ne le supprime pas.
+function registerUploadFile(req, name) {
+  markUploadStart(name);
+  const res = req && req.res;
+  if (res && typeof res.once === 'function') res.once('finish', () => markUploadEnd(name));
+  return name;
 }
 
 const multerConfig = {
@@ -475,10 +598,10 @@ const multerConfig = {
         cb(error);
       }
     },
-    filename: (_req, file, cb) => {
+    filename: (req, file, cb) => {
       const id = makeId();
       const ext = path.extname(file.originalname || '').slice(0, 24).replace(/[^a-zA-Z0-9.]/g, '');
-      cb(null, `${id}${ext || '.bin'}`);
+      cb(null, registerUploadFile(req, `${id}${ext || '.bin'}`));
     }
   }),
   limits: { files: 1 }
@@ -505,7 +628,7 @@ const chunkUpload = multer({
       cb(null, `${makeId(16)}${ext || '.part'}`);
     }
   }),
-  limits: { files: 1 }
+  limits: { files: 1, fileSize: MAX_CHUNK_SIZE_BYTES }
 });
 
 // Pas de cache pendant le développement: ça évite le problème "rien n'a changé" après refresh.
@@ -513,8 +636,17 @@ app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+  // Empêche le navigateur de deviner le type MIME (ex: un .txt servi comme du HTML).
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
+
+function sendHtml(res, html) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', HTML_CSP);
+  return res.send(html);
+}
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -525,6 +657,7 @@ app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), {
 }));
 
 function sendPage(res, fileName) {
+  res.setHeader('Content-Security-Policy', HTML_CSP);
   return res.sendFile(path.join(PUBLIC_DIR, fileName));
 }
 
@@ -572,7 +705,7 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-app.get('/api/stats', async (_req, res) => {
+app.get('/api/stats', asyncHandler(async (_req, res) => {
   await cleanupExpiredTransfers();
   const transfers = Object.values(transferStore());
   const activeBytes = transfers.reduce((sum, item) => sum + Number(item.size || 0), 0);
@@ -581,7 +714,7 @@ app.get('/api/stats', async (_req, res) => {
     activeBytes,
     activeBytesHuman: formatBytes(activeBytes)
   });
-});
+}));
 
 async function createTransfer(req, res, next) {
   try {
@@ -611,13 +744,34 @@ async function createTransfer(req, res, next) {
 }
 
 
-async function countStoredChunks(chunkDir, totalChunks) {
-  let received = 0;
-  for (let index = 0; index < totalChunks; index += 1) {
-    const exists = await fsp.access(path.join(chunkDir, `${index}.part`)).then(() => true).catch(() => false);
-    if (exists) received += 1;
+// Les morceaux sont nommés "<index>-<taille>.part": la taille réelle est donc
+// connue sans stat supplémentaire, et la limite de 10 Go s'applique aux octets
+// réellement reçus, pas à la taille annoncée par le client.
+const CHUNK_PART_RE = /^(\d+)(?:-(\d+))?\.part$/;
+
+async function readChunkState(chunkDir) {
+  const entries = await fsp.readdir(chunkDir).catch(() => []);
+  const parts = new Map();
+  for (const name of entries) {
+    const match = CHUNK_PART_RE.exec(name);
+    if (!match) continue;
+    const index = Number(match[1]);
+    if (!Number.isInteger(index) || index < 0 || parts.has(index)) continue;
+    let size = match[2] === undefined ? null : Number(match[2]);
+    if (!Number.isFinite(size)) {
+      const stat = await fsp.stat(path.join(chunkDir, name)).catch(() => null);
+      size = stat ? stat.size : 0;
+    }
+    parts.set(index, { name, size });
   }
-  return received;
+
+  let bytes = 0;
+  for (const part of parts.values()) bytes += part.size;
+  return { parts, received: parts.size, bytes };
+}
+
+function chunkPartName(index, size) {
+  return `${index}-${Number(size) || 0}.part`;
 }
 
 async function assembleChunkUpload(req, uploadId) {
@@ -647,10 +801,18 @@ async function assembleChunkUpload(req, uploadId) {
       throw error;
     }
 
-    const received = await countStoredChunks(chunkDir, totalChunks);
+    const { parts, received, bytes } = await readChunkState(chunkDir);
     if (received !== totalChunks) {
       const error = new Error(`Upload incomplet: ${received}/${totalChunks} morceaux reçus.`);
       error.status = 400;
+      throw error;
+    }
+
+    // Contrôle définitif sur les octets réellement stockés.
+    if (MAX_FILE_SIZE_BYTES && bytes > MAX_FILE_SIZE_BYTES) {
+      await fsp.rm(chunkDir, { recursive: true, force: true }).catch(() => {});
+      const error = new Error(`Fichier trop volumineux. Limite actuelle: ${formatBytes(MAX_FILE_SIZE_BYTES)}.`);
+      error.status = 413;
       throw error;
     }
 
@@ -662,28 +824,46 @@ async function assembleChunkUpload(req, uploadId) {
     const storedName = `${makeId()}${ext || '.bin'}`;
     const finalPath = path.join(FILES_DIR, storedName);
     await fsp.rm(finalPath, { force: true }).catch(() => {});
+    markUploadStart(storedName);
+    let finalSize = 0;
 
-    for (let index = 0; index < totalChunks; index += 1) {
-      const partPath = path.join(chunkDir, `${index}.part`);
-      await pipeline(
-        fs.createReadStream(partPath),
-        fs.createWriteStream(finalPath, { flags: index === 0 ? 'w' : 'a' })
-      );
-    }
+    try {
+      for (let index = 0; index < totalChunks; index += 1) {
+        const part = parts.get(index);
+        if (!part) {
+          const error = new Error(`Morceau ${index} manquant.`);
+          error.status = 400;
+          throw error;
+        }
+        await pipeline(
+          fs.createReadStream(path.join(chunkDir, part.name)),
+          fs.createWriteStream(finalPath, { flags: index === 0 ? 'w' : 'a' })
+        );
+      }
 
-    const stat = await fsp.stat(finalPath);
-    if (Number.isFinite(totalSize) && totalSize > 0 && stat.size !== totalSize) {
-      await fsp.rm(finalPath, { force: true }).catch(() => {});
-      const error = new Error(`Upload incomplet: ${formatBytes(stat.size)} reçus sur ${formatBytes(totalSize)}.`);
-      error.status = 400;
-      throw error;
+      const stat = await fsp.stat(finalPath);
+      if (MAX_FILE_SIZE_BYTES && stat.size > MAX_FILE_SIZE_BYTES) {
+        await fsp.rm(finalPath, { force: true }).catch(() => {});
+        const error = new Error(`Fichier trop volumineux. Limite actuelle: ${formatBytes(MAX_FILE_SIZE_BYTES)}.`);
+        error.status = 413;
+        throw error;
+      }
+      if (Number.isFinite(totalSize) && totalSize > 0 && stat.size !== totalSize) {
+        await fsp.rm(finalPath, { force: true }).catch(() => {});
+        const error = new Error(`Upload incomplet: ${formatBytes(stat.size)} reçus sur ${formatBytes(totalSize)}.`);
+        error.status = 400;
+        throw error;
+      }
+      finalSize = stat.size;
+    } finally {
+      markUploadEnd(storedName);
     }
 
     const payload = await registerStoredFile(req, {
       originalName,
       storedName,
       mimeType,
-      size: stat.size,
+      size: finalSize,
       ttlMinutes,
       deleteAfterDownload
     });
@@ -741,26 +921,37 @@ async function uploadChunk(req, res, next) {
       updatedAt: now()
     }, null, 2));
 
-    const targetPath = path.join(chunkDir, `${chunkIndex}.part`);
+    const targetPath = path.join(chunkDir, chunkPartName(chunkIndex, req.file.size));
     await fsp.rm(targetPath, { force: true }).catch(() => {});
     await fsp.rename(req.file.path, targetPath);
+
+    // Vérification sur les octets réellement reçus, pour arrêter l'upload au plus tôt.
+    const state = await readChunkState(chunkDir);
+    if (MAX_FILE_SIZE_BYTES && state.bytes > MAX_FILE_SIZE_BYTES) {
+      await fsp.rm(targetPath, { force: true }).catch(() => {});
+      return res.status(413).json({
+        error: `Fichier trop volumineux. Limite actuelle: ${formatBytes(MAX_FILE_SIZE_BYTES)}.`
+      });
+    }
 
     const autoFinalize = req.body.autoFinalize !== 'false';
     if (!autoFinalize) {
       return res.status(202).json({
         complete: false,
         uploadId,
-        received: null,
+        received: state.received,
+        receivedBytes: state.bytes,
         totalChunks
       });
     }
 
-    const received = await countStoredChunks(chunkDir, totalChunks);
+    const received = state.received;
     if (received !== totalChunks) {
       return res.status(202).json({
         complete: false,
         uploadId,
         received,
+        receivedBytes: state.bytes,
         totalChunks
       });
     }
@@ -792,7 +983,7 @@ app.post('/api/transfers/complete', completeChunkUpload);
 app.post('/api/transfers', upload.single('file'), createTransfer);
 app.post('/api/upload', upload.single('file'), createTransfer); // compatibilité ancienne UI
 
-app.get('/api/codes/:code', async (req, res) => {
+app.get('/api/codes/:code', asyncHandler(async (req, res) => {
   const meta = findTransferByCode(req.params.code);
   if (!meta) return res.status(404).json({ error: 'Code introuvable.' });
   if (Number(meta.expiresAt) <= now()) {
@@ -800,10 +991,10 @@ app.get('/api/codes/:code', async (req, res) => {
     return res.status(410).json({ error: 'Transfert expiré.' });
   }
   return res.json(publicTransferPayload(req, meta));
-});
+}));
 
-app.get('/api/transfers/:id', async (req, res) => {
-  const meta = transferStore()[req.params.id];
+app.get('/api/transfers/:id', asyncHandler(async (req, res) => {
+  const meta = getTransfer(req.params.id);
   if (!meta) return res.status(404).json({ error: 'Transfert introuvable.' });
   if (Number(meta.expiresAt) <= now()) {
     await deleteTransfer(req.params.id, 'expiration-api');
@@ -811,10 +1002,10 @@ app.get('/api/transfers/:id', async (req, res) => {
   }
 
   return res.json(publicTransferPayload(req, meta));
-});
+}));
 
-app.delete('/api/transfers/:id', async (req, res) => {
-  const meta = transferStore()[req.params.id];
+app.delete('/api/transfers/:id', asyncHandler(async (req, res) => {
+  const meta = getTransfer(req.params.id);
   if (!meta) return res.status(404).json({ error: 'Transfert introuvable.' });
 
   const providedKey = req.get('x-delete-key') || req.query.deleteKey || req.body.deleteKey;
@@ -825,6 +1016,31 @@ app.delete('/api/transfers/:id', async (req, res) => {
 
   await deleteTransfer(req.params.id, 'suppression-manuelle');
   return res.json({ ok: true });
+}));
+
+const showSharePageByCode = asyncHandler(async (req, res) => {
+  const meta = findTransferByCode(req.params.code);
+  if (!meta) {
+    return sendHtml(res.status(404), renderMessagePage('Code introuvable', 'Le code est incorrect, expiré ou le fichier a déjà été supprimé.'));
+  }
+  if (Number(meta.expiresAt) <= now()) {
+    await deleteTransfer(meta.id, 'expiration-code-visite');
+    return sendHtml(res.status(410), renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
+  }
+  return sendHtml(res, renderSharePage(req, meta));
+});
+
+const showSharePage = asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  const meta = getTransfer(id);
+  if (!meta) {
+    return sendHtml(res.status(404), renderMessagePage('Transfert introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
+  }
+  if (Number(meta.expiresAt) <= now()) {
+    await deleteTransfer(id, 'expiration-visite');
+    return sendHtml(res.status(410), renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
+  }
+  return sendHtml(res, renderSharePage(req, meta));
 });
 
 app.get('/c/:code', showSharePageByCode);
@@ -832,46 +1048,30 @@ app.get('/code/:code', showSharePageByCode);
 app.get('/t/:id', showSharePage);
 app.get('/share/:id', showSharePage); // compatibilité ancien QR
 
-async function showSharePageByCode(req, res) {
-  const meta = findTransferByCode(req.params.code);
-  if (!meta) {
-    return res.status(404).send(renderMessagePage('Code introuvable', 'Le code est incorrect, expiré ou le fichier a déjà été supprimé.'));
-  }
-  if (Number(meta.expiresAt) <= now()) {
-    await deleteTransfer(meta.id, 'expiration-code-visite');
-    return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
-  }
-  return res.send(renderSharePage(req, meta));
-}
-
-async function showSharePage(req, res) {
+// Aperçu en ligne réservé aux médias (vidéo/audio). Un HTML ou un SVG uploadé ne
+// doit jamais être rendu par le navigateur sur notre origine: ce serait une XSS stockée.
+app.get('/view/:id', asyncHandler(async (req, res) => {
   const id = req.params.id;
-  const meta = transferStore()[id];
+  const meta = getTransfer(id);
   if (!meta) {
-    return res.status(404).send(renderMessagePage('Transfert introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
-  }
-  if (Number(meta.expiresAt) <= now()) {
-    await deleteTransfer(id, 'expiration-visite');
-    return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
-  }
-  return res.send(renderSharePage(req, meta));
-}
-
-app.get('/view/:id', async (req, res) => {
-  const id = req.params.id;
-  const meta = transferStore()[id];
-  if (!meta) {
-    return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
+    return sendHtml(res.status(404), renderMessagePage('Fichier introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
   }
   if (Number(meta.expiresAt) <= now()) {
     await deleteTransfer(id, 'expiration-preview');
-    return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
+    return sendHtml(res.status(410), renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
   }
 
   const filePath = path.join(FILES_DIR, meta.storedName);
   if (!fs.existsSync(filePath)) {
     await deleteTransfer(id, 'fichier-manquant-preview');
-    return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
+    return sendHtml(res.status(404), renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
+  }
+
+  if (!isPreviewableMime(meta.mimeType)) {
+    return sendHtml(res.status(415), renderMessagePage(
+      'Aperçu indisponible',
+      'Ce type de fichier ne peut pas être affiché dans le navigateur. Utilise le bouton de téléchargement pour le récupérer.'
+    ));
   }
 
   const stat = await fsp.stat(filePath);
@@ -901,23 +1101,23 @@ app.get('/view/:id', async (req, res) => {
 
   res.setHeader('Content-Length', total);
   return fs.createReadStream(filePath).pipe(res);
-});
+}));
 
-app.get('/download/:id', async (req, res) => {
+app.get('/download/:id', asyncHandler(async (req, res) => {
   const id = req.params.id;
-  const meta = transferStore()[id];
+  const meta = getTransfer(id);
   if (!meta) {
-    return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
+    return sendHtml(res.status(404), renderMessagePage('Fichier introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
   }
   if (Number(meta.expiresAt) <= now()) {
     await deleteTransfer(id, 'expiration-telechargement');
-    return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
+    return sendHtml(res.status(410), renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
   }
 
   const filePath = path.join(FILES_DIR, meta.storedName);
   if (!fs.existsSync(filePath)) {
     await deleteTransfer(id, 'fichier-manquant');
-    return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
+    return sendHtml(res.status(404), renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
   }
 
   meta.downloads = Number(meta.downloads || 0) + 1;
@@ -934,17 +1134,23 @@ app.get('/download/:id', async (req, res) => {
       await deleteTransfer(id, 'apres-premier-telechargement');
     }
   });
-});
+}));
 
 app.use((req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Route API introuvable.' });
-  return res.status(404).send(renderMessagePage('Page introuvable', 'Cette page n’existe pas ou a été déplacée.'));
+  return sendHtml(res.status(404), renderMessagePage('Page introuvable', 'Cette page n’existe pas ou a été déplacée.'));
 });
 
 app.use((error, _req, res, _next) => {
   console.error(error);
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
+      const isChunk = _req && String(_req.path || '').endsWith('/chunk');
+      if (isChunk) {
+        return res.status(413).json({
+          error: `Morceau trop volumineux. Limite: ${formatBytes(MAX_CHUNK_SIZE_BYTES)}. Baisse CHUNK_SIZE_MB ou augmente MAX_CHUNK_SIZE_MB.`
+        });
+      }
       const limit = MAX_FILE_SIZE_BYTES ? formatBytes(MAX_FILE_SIZE_BYTES) : 'limite inconnue';
       return res.status(413).json({ error: `Fichier trop volumineux. Limite actuelle: ${limit}.` });
     }
@@ -1043,6 +1249,17 @@ function renderMessagePage(title, message) {
 <body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><p><a href="/upload">Créer un nouveau transfert</a></p></main></body>
 </html>`;
 }
+
+// Filet de sécurité: les routes async sont déjà protégées par asyncHandler, mais
+// une erreur imprévue ne doit plus faire tomber tout le serveur silencieusement.
+process.on('unhandledRejection', (error) => {
+  console.error('Promesse rejetée non gérée:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Exception non gérée, arrêt du processus:', error);
+  process.exit(1);
+});
 
 ensureStorage()
   .then(async () => {

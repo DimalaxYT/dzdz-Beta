@@ -152,7 +152,7 @@
 
       if (!chunkedUploadAvailable) {
         configNotice.classList.remove('hidden');
-        configNotice.innerHTML = `<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.7.0</code>.`;
+        configNotice.innerHTML = `<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.7.1</code>.`;
       }
       if (config.sandboxWarning) {
         configNotice.classList.remove('hidden');

@@ -1,0 +1,20 @@
+# Dépendances
+node_modules/
+
+# Stockage des transferts: ne jamais versionner les fichiers des utilisateurs
+storage/
+*.tmp
+db.json.tmp
+
+# Configuration locale / secrets
+.env
+.env.*
+!.env.example
+
+# Journaux
+*.log
+npm-debug.log*
+
+# Système
+.DS_Store
+Thumbs.db
