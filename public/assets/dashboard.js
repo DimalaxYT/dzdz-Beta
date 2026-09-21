@@ -1,16 +1,29 @@
+/* ==========================================================================
+   DropQR — page « Mes liens »
+   La liste vit dans le navigateur ; l'état réel (expiration, téléchargements)
+   vient du serveur, et la suppression à distance utilise la clé privée.
+   ========================================================================== */
+
 (() => {
+  'use strict';
+
+  const { escapeHtml, formatDate, startCountdown, toast, copyText, reduceMotion } = window.DropQR;
+
   const list = document.getElementById('transferList');
   const empty = document.getElementById('emptyDashboard');
   const status = document.getElementById('dashboardStatus');
-  const countBadge = document.getElementById('countBadge');
   const refreshButton = document.getElementById('refreshButton');
   const clearLocalButton = document.getElementById('clearLocalButton');
+  const statCount = document.getElementById('statCount');
+  const statSize = document.getElementById('statSize');
+  const statExpired = document.getElementById('statExpired');
+
+  let stopCountdowns = [];
 
   function readTransfers() {
     try {
-      const value = localStorage.getItem('dropqr.transfers');
-      return value ? JSON.parse(value) : [];
-    } catch (_error) {
+      return JSON.parse(localStorage.getItem('dropqr.transfers') || '[]');
+    } catch {
       return [];
     }
   }
@@ -19,142 +32,170 @@
     localStorage.setItem('dropqr.transfers', JSON.stringify(transfers));
   }
 
-  function escapeHtml(value) {
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+  function setStatus(message, type = '') {
+    status.className = `status ${type}`.trim();
+    status.textContent = message || '';
   }
 
-  function formatDate(value) {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  function animateNumber(element, value, suffix = '') {
+    if (!element) return;
+    if (reduceMotion) {
+      element.textContent = `${value}${suffix}`;
+      return;
+    }
+    const start = performance.now();
+    const from = Number(String(element.textContent).replace(/[^0-9.]/g, '')) || 0;
+    const duration = 600;
+    function frame(timestamp) {
+      const progress = Math.min(1, (timestamp - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      element.textContent = `${Math.round(from + (value - from) * eased)}${suffix}`;
+      if (progress < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
   }
 
   function formatRemaining(seconds) {
-    if (seconds <= 0) return 'expiré';
-    if (seconds < 60) return `${seconds} s`;
-    const minutes = Math.ceil(seconds / 60);
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.ceil(minutes / 60);
-    if (hours < 24) return `${hours} h`;
-    return `${Math.ceil(hours / 24)} j`;
+    const total = Math.max(0, Number(seconds) || 0);
+    if (total <= 0) return 'expiré';
+    if (total < 3600) return `${Math.ceil(total / 60)} min`;
+    if (total < 86400) return `${Math.floor(total / 3600)} h ${String(Math.floor((total % 3600) / 60)).padStart(2, '0')}`;
+    return `${Math.floor(total / 86400)} j ${String(Math.floor((total % 86400) / 3600)).padStart(2, '0')} h`;
   }
 
-  function setStatus(message, type = '') {
-    status.className = `status ${type}`.trim();
-    status.textContent = message;
-  }
-
-  async function copyText(text) {
+  async function remoteState(id) {
     try {
-      await navigator.clipboard.writeText(text);
-      setStatus('Lien copié.', 'success');
-    } catch (_error) {
-      window.prompt('Copie le lien:', text);
+      const response = await fetch(`/api/transfers/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      if (response.status === 404 || response.status === 410) return { missing: true };
+      if (!response.ok) return { unknown: true };
+      return await response.json();
+    } catch {
+      return { unknown: true };
     }
-  }
-
-  async function deleteTransfer(id, deleteKey) {
-    if (!deleteKey) {
-      setStatus('Impossible de supprimer : clé locale absente.', 'error');
-      return;
-    }
-    if (!confirm('Supprimer ce fichier du serveur maintenant ?')) return;
-
-    const response = await fetch(`/api/transfers/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', 'X-Delete-Key': deleteKey },
-      body: JSON.stringify({ deleteKey })
-    });
-
-    if (!response.ok && response.status !== 404) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload.error || 'Suppression impossible.');
-    }
-
-    const transfers = readTransfers().filter((item) => item.id !== id);
-    writeTransfers(transfers);
-    setStatus('Transfert supprimé.', 'success');
-    await render();
-  }
-
-  async function getRemoteStatus(id) {
-    const response = await fetch(`/api/transfers/${encodeURIComponent(id)}`, { cache: 'no-store' });
-    if (response.status === 404 || response.status === 410) return { missing: true, status: response.status };
-    if (!response.ok) throw new Error('Statut indisponible');
-    return response.json();
   }
 
   function renderCard(item, remote) {
-    const missing = remote && remote.missing;
-    const badgeClass = missing ? 'badge expired' : 'badge';
-    const badgeText = missing ? 'supprimé / expiré' : `reste ${formatRemaining(remote.secondsRemaining || 0)}`;
-    const downloads = missing ? '—' : String(remote.downloads || 0);
-    const size = missing ? (item.sizeHuman || '—') : (remote.sizeHuman || item.sizeHuman || '—');
-    const expiry = missing ? formatDate(item.expiresAt) : formatDate(remote.expiresAt);
-    const url = item.shareUrl || (remote && remote.shareUrl) || `/t/${item.id}`;
+    const missing = Boolean(remote && remote.missing);
+    const badge = missing
+      ? '<span class="badge expired">supprimé ou expiré</span>'
+      : `<span class="badge ready">reste ${escapeHtml(formatRemaining(remote ? remote.secondsRemaining : 0))}</span>`;
+    const codeChars = String(item.code || '')
+      .split('')
+      .map((char) => `<span>${escapeHtml(char)}</span>`)
+      .join('');
+    const size = (remote && remote.sizeHuman) || item.sizeHuman || '—';
+    const expiryValue = (remote && remote.expiresAt) || item.expiresAt;
+    const url = (remote && remote.shareUrl) || item.shareUrl || `${window.location.origin}/r/${item.id}`;
 
     return `
-      <article class="transfer-card" data-id="${escapeHtml(item.id)}">
+      <article class="transfer-card" data-id="${escapeHtml(item.id)}" data-expires="${escapeHtml(expiryValue || '')}">
         <div class="transfer-top">
           <div>
-            <div class="transfer-title">${escapeHtml(item.fileName || remote.fileName || item.id)}</div>
-            <div style="color:#94a3b8;font-size:13px;margin-top:4px">${escapeHtml(size)} · expire ${escapeHtml(expiry)} · téléchargements: ${escapeHtml(downloads)}</div>
+            <div class="transfer-title">${escapeHtml(item.fileName || (remote && remote.fileName) || item.id)}</div>
+            <div class="transfer-sub">${escapeHtml(size)} · expire le ${escapeHtml(formatDate(expiryValue))}</div>
           </div>
-          <span class="${badgeClass}">${escapeHtml(badgeText)}</span>
+          ${badge}
         </div>
+        <div class="transfer-code" aria-label="Code du transfert">${codeChars}</div>
         <div class="share-link" title="${escapeHtml(url)}">${escapeHtml(url)}</div>
+        ${
+          missing
+            ? ''
+            : `<div class="countdown" data-countdown data-target="${escapeHtml(new Date(expiryValue).toISOString())}">
+                 <span class="countdown-unit"><strong data-unit="days">0</strong><small>j</small></span>
+                 <span class="countdown-unit"><strong data-unit="hours">00</strong><small>h</small></span>
+                 <span class="countdown-unit"><strong data-unit="minutes">00</strong><small>min</small></span>
+                 <span class="countdown-unit"><strong data-unit="seconds">00</strong><small>s</small></span>
+               </div>`
+        }
         <div class="transfer-actions">
-          <a class="btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">Ouvrir</a>
-          <button class="btn" type="button" data-action="copy" data-url="${escapeHtml(url)}">Copier</button>
-          <button class="btn" type="button" data-action="delete" data-id="${escapeHtml(item.id)}">Supprimer serveur</button>
-          <button class="btn" type="button" data-action="forget" data-id="${escapeHtml(item.id)}">Retirer de la liste</button>
+          <button type="button" class="btn btn-small" data-action="copy" data-url="${escapeHtml(url)}">Copier le lien</button>
+          <a class="btn btn-small btn-ghost" href="${escapeHtml(url)}" target="_blank" rel="noopener">Ouvrir la page</a>
+          ${missing ? '' : `<button type="button" class="btn btn-small btn-quiet" data-action="delete" data-id="${escapeHtml(item.id)}">Supprimer du serveur</button>`}
+          <button type="button" class="btn btn-small btn-quiet" data-action="forget" data-id="${escapeHtml(item.id)}">Retirer de la liste</button>
         </div>
       </article>`;
   }
 
   async function render() {
     const transfers = readTransfers();
-    countBadge.textContent = `${transfers.length} lien${transfers.length > 1 ? 's' : ''}`;
-    empty.classList.toggle('hidden', transfers.length > 0);
-    list.innerHTML = '';
+    stopCountdowns.forEach((stop) => stop());
+    stopCountdowns = [];
 
-    if (!transfers.length) return;
-
-    setStatus('Vérification des statuts…');
-    const cards = [];
-    for (const item of transfers) {
-      try {
-        const remote = await getRemoteStatus(item.id);
-        cards.push(renderCard(item, remote));
-      } catch (_error) {
-        cards.push(renderCard(item, { missing: true }));
-      }
+    empty.hidden = transfers.length > 0;
+    if (!transfers.length) {
+      list.innerHTML = '';
+      animateNumber(statCount, 0);
+      animateNumber(statSize, 0);
+      animateNumber(statExpired, 0);
+      setStatus('Aucun transfert enregistré dans ce navigateur.');
+      return;
     }
+
+    setStatus('Vérification des statuts côté serveur…');
+    list.innerHTML = '<p class="note">Chargement…</p>';
+
+    const states = await Promise.all(transfers.map((item) => remoteState(item.id)));
+    let activeBytes = 0;
+    let expiredCount = 0;
+
+    const cards = transfers.map((item, index) => {
+      const remote = states[index];
+      if (remote && remote.missing) expiredCount += 1;
+      if (remote && !remote.missing && Number(remote.size)) activeBytes += Number(remote.size);
+      return renderCard(item, remote);
+    });
+
     list.innerHTML = cards.join('');
-    setStatus('Statuts à jour.', 'success');
+    list.querySelectorAll('[data-countdown]').forEach((element) => {
+      stopCountdowns.push(startCountdown(element, element.dataset.target));
+    });
+
+    animateNumber(statCount, transfers.length);
+    animateNumber(statSize, Math.round(activeBytes / 1024 / 1024), ' Mo');
+    animateNumber(statExpired, expiredCount);
+    setStatus(`${transfers.length} transfert${transfers.length > 1 ? 's' : ''} suivi${transfers.length > 1 ? 's' : ''} · ${expiredCount} expiré${expiredCount > 1 ? 's' : ''}.`, 'success');
+  }
+
+  async function removeFromServer(id, deleteKey) {
+    if (!deleteKey) {
+      setStatus('Clé de suppression absente : ce transfert a peut-être été créé sur un autre appareil.', 'error');
+      return;
+    }
+    if (!window.confirm('Supprimer ce fichier du serveur maintenant ? Cette action est définitive.')) return;
+
+    const response = await fetch(`/api/transfers/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'X-Delete-Key': deleteKey },
+      body: JSON.stringify({ deleteKey })
+    });
+    if (!response.ok && response.status !== 404) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || 'Suppression impossible.');
+    }
+    const transfers = readTransfers().filter((item) => item.id !== id);
+    writeTransfers(transfers);
+    toast('Transfert supprimé du serveur.');
+    await render();
   }
 
   list.addEventListener('click', async (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
-    const action = button.dataset.action;
-    const id = button.dataset.id;
     const transfers = readTransfers();
-    const item = transfers.find((entry) => entry.id === id);
+    const item = transfers.find((entry) => entry.id === button.dataset.id);
 
     try {
-      if (action === 'copy') {
-        await copyText(button.dataset.url);
+      if (button.dataset.action === 'copy') {
+        const ok = await copyText(button.dataset.url);
+        toast(ok ? 'Lien copié.' : 'Copie impossible.', ok ? 'success' : 'error');
       }
-      if (action === 'delete') {
-        await deleteTransfer(id, item && item.deleteKey);
+      if (button.dataset.action === 'delete') {
+        await removeFromServer(button.dataset.id, item && item.deleteKey);
       }
-      if (action === 'forget') {
-        writeTransfers(transfers.filter((entry) => entry.id !== id));
+      if (button.dataset.action === 'forget') {
+        writeTransfers(transfers.filter((entry) => entry.id !== button.dataset.id));
+        toast('Retiré de la liste locale.');
         await render();
       }
     } catch (error) {
@@ -162,11 +203,12 @@
     }
   });
 
-  refreshButton.addEventListener('click', render);
+  refreshButton.addEventListener('click', () => render());
+
   clearLocalButton.addEventListener('click', async () => {
-    if (!confirm('Nettoyer seulement la liste locale ? Les fichiers existants sur le serveur ne seront pas supprimés.')) return;
+    if (!window.confirm('Vider la liste locale ? Les fichiers déjà envoyés resteront sur le serveur jusqu’à leur expiration.')) return;
     writeTransfers([]);
-    setStatus('Liste locale nettoyée.', 'success');
+    toast('Liste locale vidée.');
     await render();
   });
 

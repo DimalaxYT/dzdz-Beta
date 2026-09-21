@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard
+
+# DropQR : transfert temporaire de fichiers par code court et QR.
