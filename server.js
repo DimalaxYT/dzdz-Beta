@@ -1083,7 +1083,7 @@ function renderSharePage(req, meta) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=12">
+  <link rel="stylesheet" href="/assets/app.css?v=13">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1107,7 +1107,7 @@ function renderSharePage(req, meta) {
       <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
     </main>
   </div>
-  <script src="/assets/site.js?v=2" defer></script>
+  <script src="/assets/site.js?v=3" defer></script>
 </body>
 </html>`;
 }
@@ -1119,7 +1119,7 @@ function renderMessagePage(title, message) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=12">
+  <link rel="stylesheet" href="/assets/app.css?v=13">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1131,7 +1131,7 @@ function renderMessagePage(title, message) {
       <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
     </main>
   </div>
-  <script src="/assets/site.js?v=2" defer></script>
+  <script src="/assets/site.js?v=3" defer></script>
 </body>
 </html>`;
 }
