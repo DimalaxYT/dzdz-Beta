@@ -46,6 +46,8 @@ function check(label, condition, detail = '') {
 
 const TARGET_NETLIFY = process.argv.includes('--netlify');
 const TARGET_BLOBS = process.argv.includes('--blobs');
+// Mode « zéro configuration » : métadonnées ET fichiers dans Netlify Blobs.
+const TARGET_BLOB_OBJECTS = process.argv.includes('--blob-objects');
 
 /**
  * Netlify Blobs n'existe que sur la plateforme. Le paquet officiel embarque
@@ -54,8 +56,16 @@ const TARGET_BLOBS = process.argv.includes('--blobs');
  * tester la vraie chaîne de production des métadonnées.
  */
 let blobsServer = null;
-if (TARGET_BLOBS) {
+if (TARGET_BLOBS || TARGET_BLOB_OBJECTS) {
   process.env.DROPQR_META = 'blobs';
+  if (TARGET_BLOB_OBJECTS) {
+    // Aucun stockage objet : les fichiers doivent partir dans Netlify Blobs.
+    process.env.DROPQR_STORAGE = 'auto';
+    delete process.env.S3_BUCKET;
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
+    delete process.env.S3_ENDPOINT;
+  }
   const { BlobsServer } = await import('@netlify/blobs/server');
   blobsServer = new BlobsServer({
     directory: path.join(os.tmpdir(), `dropqr-blobs-${process.pid}`),
@@ -69,7 +79,11 @@ if (TARGET_BLOBS) {
   ).toString('base64');
 }
 
-console.log(`Cible : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'} + métadonnées ${TARGET_BLOBS ? 'Netlify Blobs' : 'disque'}`);
+console.log(
+  `Cible : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'} + métadonnées ${
+    TARGET_BLOBS || TARGET_BLOB_OBJECTS ? 'Netlify Blobs' : 'disque'
+  }`
+);
 
 await fsp.rm(ROOT, { recursive: true, force: true });
 // `instance` sert aux accès internes (store, purge), y compris en mode Netlify.
@@ -257,12 +271,18 @@ check('un aperçu ne déclenche pas la suppression', (await request(`/api/transf
 
 group('7. Expiration et purge');
 const store = await instance.getStore();
+const expectedMeta = TARGET_BLOBS || TARGET_BLOB_OBJECTS ? 'blobs' : 'local';
+const expectedObjects = TARGET_BLOB_OBJECTS ? 'blobs' : 'local';
+const expectedStorage = TARGET_BLOB_OBJECTS ? 'blobs' : 'local';
 check(
   'métadonnées et fichiers ont des backends indépendants',
-  store.metadataKind === (TARGET_BLOBS ? 'blobs' : 'local') && store.objectKind === 'local',
+  store.metadataKind === expectedMeta && store.objectKind === expectedObjects,
   `${store.metadataKind} / ${store.objectKind}`
 );
-check('les fichiers restent accessibles sur le disque', typeof store.objectPath('essai.bin') === 'string');
+check(
+  expectedObjects === 'blobs' ? 'les fichiers sont rangés dans Netlify Blobs' : 'les fichiers restent accessibles sur le disque',
+  expectedObjects === 'blobs' ? store.objectPath('essai.bin') === null : typeof store.objectPath('essai.bin') === 'string'
+);
 const expiring = await (await request('/api/transfers', {
   method: 'POST',
   body: { fileName: 'temporaire.bin', size: 1000, mimeType: 'application/octet-stream', ttlMinutes: 30 }
@@ -287,6 +307,52 @@ check('envoi abandonné nettoyé', purgeResult.removed >= 1, JSON.stringify(purg
 check('envoi abandonné introuvable', (await store.readMeta(abandoned.id)) === null);
 
 /* ---------------------------- 8. Limite de débit ------------------------- */
+
+/* ---------- 17. Mode sans configuration : fichiers dans Blobs ----------- */
+
+if (TARGET_BLOB_OBJECTS) {
+  group('7 bis. Mode sans configuration (fichiers dans Netlify Blobs)');
+  const tropGros = await request('/api/transfers', {
+    method: 'POST',
+    body: { fileName: 'trop-gros.bin', size: 9 * 1024 * 1024, mimeType: 'application/octet-stream' }
+  });
+  check('fichier au-delà de la limite refusé (413)', tropGros.status === 413, `${tropGros.status} ${(await tropGros.json()).error || ''}`);
+
+  const justeBien = await (
+    await request('/api/transfers', {
+      method: 'POST',
+      body: { fileName: 'moyen.bin', size: 3 * 1024 * 1024, mimeType: 'application/octet-stream', deleteAfterDownload: false }
+    })
+  ).json();
+  const contenu = Buffer.alloc(3 * 1024 * 1024, 7);
+  const envoi = await request(`/api/transfers/${justeBien.id}/content`, {
+    method: 'PUT',
+    body: contenu,
+    deleteKey: justeBien.deleteKey
+  });
+  check('envoi de 3 Mo accepté', envoi.status === 200, String(envoi.status));
+  const trop = await request(`/api/transfers/${justeBien.id}/content`, {
+    method: 'PUT',
+    body: Buffer.alloc(5 * 1024 * 1024, 1),
+    deleteKey: justeBien.deleteKey
+  });
+  check('flux plus gros que la limite refusé (413)', trop.status === 413, String(trop.status));
+  const fin = await (
+    await request(`/api/transfers/${justeBien.id}/complete`, { method: 'POST', body: {}, deleteKey: justeBien.deleteKey })
+  ).json();
+  check('finalisation', fin.status === 'ready', String(fin.status));
+  const telecharge = await request(`/download/${justeBien.id}`);
+  const relu = Buffer.from(await telecharge.arrayBuffer());
+  check('téléchargement identique à l’original', relu.equals(contenu), `${relu.length} octets`);
+  const plage = await request(`/asset/${justeBien.id}`, { headers: { range: 'bytes=0-99' } });
+  check('plage d’octets servie (206)', plage.status === 206 && plage.headers.get('content-range')?.startsWith('bytes 0-99/'), String(plage.status));
+  const vue = await request(`/asset/${justeBien.id}`);
+  check('aperçu non compté comme téléchargement', (await (await request(`/api/transfers/${justeBien.id}`)).json()).downloads === 1, 'un seul téléchargement réel');
+  const supprime = await request(`/api/transfers/${justeBien.id}`, { method: 'DELETE', deleteKey: justeBien.deleteKey });
+  check('suppression', supprime.status === 200, String(supprime.status));
+  const objetSupprime = await request(`/asset/${justeBien.id}`);
+  check('objet retiré du stockage', objetSupprime.status === 404, String(objetSupprime.status));
+}
 
 group('8. Limite de débit');
 let limited = 0;
@@ -370,13 +436,18 @@ check('URL modifiée invalide', !verifyPresignedUrl(tampered));
 group('10. Points de contrôle');
 const health = await (await request('/api/health')).json();
 check('santé : version 2.0.0', health.version === '2.0.0', health.version);
-check('santé : mode de stockage', health.storage === 'local', health.storage);
+check(`santé : mode de stockage — ${expectedStorage}`, health.storage === expectedStorage, health.storage);
 check(
-  `santé : métadonnées sur ${TARGET_BLOBS ? 'Blobs' : 'disque'}`,
-  health.metadata === (TARGET_BLOBS ? 'blobs' : 'local'),
+  `santé : métadonnées sur ${expectedMeta === 'blobs' ? 'Blobs' : 'disque'}`,
+  health.metadata === expectedMeta,
   health.metadata
 );
-check('santé : limite annoncée', health.maxFileSizeHuman === '50.0 Mo', health.maxFileSizeHuman);
+// En mode Blobs, la taille est plafonnée par la limite des fonctions Netlify.
+check(
+  'santé : limite annoncée',
+  health.maxFileSizeHuman === (TARGET_BLOB_OBJECTS ? '4.00 Mo' : '50.0 Mo'),
+  health.maxFileSizeHuman
+);
 const config = await (await request('/api/config')).json();
 check('config : mode d’envoi direct signalé', config.directUpload === false);
 check('config : taille des morceaux', config.partSizeBytes >= 5 * 1024 * 1024, String(config.partSizeBytes));
@@ -414,10 +485,19 @@ const mauvaisJeton = await guarded.handleRequest(
 );
 check('purge avec jeton : refus sans en-tête', sansJeton.status === 403, String(sansJeton.status));
 check('purge avec jeton : refus si le jeton est faux', mauvaisJeton.status === 403, String(mauvaisJeton.status));
+// En mode serveur, c'est le routeur qui sert les fichiers publics ; sur
+// Netlify, le CDN s'en charge avant même d'appeler la fonction.
+const servesStatics = !(TARGET_NETLIFY || TARGET_BLOBS || TARGET_BLOB_OBJECTS);
 const robots = await request('/robots.txt');
-check('robots.txt servi', robots.status === 200, String(robots.status));
 const favicon = await request('/assets/favicon.svg');
-check('favicon servi', favicon.status === 200, String(favicon.status));
+if (servesStatics) {
+  check('robots.txt servi', robots.status === 200, String(robots.status));
+  check('favicon servi', favicon.status === 200, String(favicon.status));
+} else {
+  const onDisk = await fsp.readFile(path.join(process.cwd(), 'public/robots.txt'), 'utf8').catch(() => '');
+  check('robots.txt présent pour le CDN', onDisk.includes('User-agent'), robots.status === 404 ? 'servi par le CDN' : String(robots.status));
+  check('favicon présent pour le CDN', (await fsp.stat(path.join(process.cwd(), 'public/assets/favicon.svg')).then(() => true, () => false)));
+}
 const racineInterdite = await request('/package.json');
 check('fichiers sensibles non exposés', racineInterdite.status === 404, String(racineInterdite.status));
 
@@ -607,11 +687,11 @@ const previewHome = await request('/');
 const previewCsp = previewHome.headers.get('content-security-policy') || '';
 // Le contexte Blobs nous fait passer pour Netlify : le cadrage redevient strict.
 check(
-  TARGET_BLOBS
+  TARGET_BLOBS || TARGET_BLOB_OBJECTS
     ? 'contexte Netlify : cadrage strict'
     : 'local : aperçu autorisé à encadrer le site, et rien d’autre',
   previewCsp.includes(
-    TARGET_BLOBS ? "frame-ancestors 'self'" : "frame-ancestors 'self' https://*.e2b.app"
+    TARGET_BLOBS || TARGET_BLOB_OBJECTS ? "frame-ancestors 'self'" : "frame-ancestors 'self' https://*.e2b.app"
   ),
   previewCsp.split('; ').pop()
 );
@@ -645,7 +725,11 @@ for (const route of [...pages, '/offline']) {
 await fsp.rm(ROOT, { recursive: true, force: true });
 if (blobsServer) await blobsServer.stop();
 
-console.log(`\nCible testée : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'} (métadonnées : ${TARGET_BLOBS ? 'Netlify Blobs' : 'disque'})`);
+console.log(
+  `\nCible testée : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'} (métadonnées : ${
+    TARGET_BLOBS || TARGET_BLOB_OBJECTS ? 'Netlify Blobs' : 'disque'
+  }, fichiers : ${TARGET_BLOB_OBJECTS ? 'Netlify Blobs' : 'disque'})`
+);
 console.log(`${checks - failures}/${checks} vérifications réussies.`);
 console.log(failures === 0 ? 'Tous les tests sont passés.' : `${failures} test(s) en échec.`);
 process.exit(failures === 0 ? 0 : 1);

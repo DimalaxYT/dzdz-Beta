@@ -22,16 +22,21 @@ Pourquoi c'est nécessaire : **une fonction Netlify n'accepte que 6 Mo par requ�
 binaire) et 20 Mo en réponse. Un serveur Express classique ne peut donc pas recevoir un fichier de
 2 Go sur Netlify — mais une URL pré-signée, si.
 
-## Les deux modes
+## Trois façons de fonctionner
 
-| | Netlify (recommandé, gratuit) | Serveur Node |
-| --- | --- | --- |
-| Pages | Fonction serverless (rendu à la volée) | Même code, servies localement |
-| Octets | Stockage objet S3/R2 via URL pré-signées | Disque de la machine |
-| Métadonnées | Netlify Blobs (cohérence forte) | Fichiers JSON sur disque |
-| Hôte | Netlify | localhost, VPS, Railway, Render |
+| | Netlify sans configuration | Netlify + R2 | Serveur Node |
+| --- | --- | --- | --- |
+| Mise en route | déployer, c'est tout | créer un compartiment R2 | `npm start` |
+| Taille par transfert | 4 Mo | jusqu'à 2 Go | jusqu'à 2 Go |
+| Octets | Netlify Blobs, via la fonction | envoi direct au stockage objet | disque de la machine |
+| Métadonnées | Netlify Blobs | Netlify Blobs | fichiers JSON |
+| Coût | inclus dans l'offre gratuite | 10 Go gratuits chez Cloudflare | hébergement du serveur |
 
-Le même `lib/app.mjs` sert de routeur dans les deux cas : aucun comportement divergent.
+Le même `lib/app.mjs` sert de routeur dans les trois cas : aucun comportement divergent. Le mode sans
+configuration existe parce que Netlify refuse toute requête de fonction au-delà de 6 Mo : les fichiers
+sont alors rangés dans Netlify Blobs, qui est inclus dans l'offre, ce qui suffit pour des documents, des
+photos ou des clips courts. Pour des vidéos, passez au compartiment R2 (gratuit lui aussi) : les octets
+partent alors directement du navigateur vers le stockage, sans passer par la fonction.
 
 ## Démarrage local
 
@@ -97,7 +102,9 @@ pas l'exposer, l'application demande les ETag au stockage à la place (secours a
 
 ### 4. Vérifier
 
-Ouvre `/api/health`. La réponse attendue :
+Sans rien configurer, le site fonctionne déjà : `/api/health` répond `"storage": "blobs"` et les
+fichiers jusqu'à 4 Mo sont acceptés. Après avoir ajouté les variables du compartiment R2, la réponse
+devient :
 
 ```json
 {
@@ -123,7 +130,7 @@ multipart avec plusieurs flux parallèles.
 
 | Variable | Défaut | Rôle |
 | --- | --- | --- |
-| `DROPQR_STORAGE` | `auto` | `s3`, `local` ou `auto` (détection) |
+| `DROPQR_STORAGE` | `auto` | `s3`, `blobs`, `local` ou `auto` (détection) |
 | `DROPQR_META` | `auto` | `blobs`, `local` ou `auto` |
 | `S3_ENDPOINT` | déduit de `R2_ACCOUNT_ID` | compatible MinIO, B2, AWS |
 | `S3_REGION` | `auto` | région de signature |
@@ -236,6 +243,17 @@ relance un déploiement complet (pas seulement un « Deploy site » sans build).
 **L'envoi démarre puis échoue immédiatement**
 C'est presque toujours le CORS du stockage : origine autorisée en `GET`, `PUT`, `HEAD`, et `ETag`
 exposé. L'interface affiche un message explicite dans ce cas.
+
+**« Fichier trop volumineux. Limite actuelle : 4.00 Mo. »**
+Le site tourne sans stockage objet : les fichiers passent par la fonction Netlify, plafonnée à 6 Mo par
+requête. C'est suffisant pour des documents et des photos. Pour envoyer des vidéos, ajoute les
+variables du compartiment R2 (section « Déploiement sur Netlify ») : la limite passe à 2 Go et les
+octets ne traversent plus la fonction.
+
+**Le site affiche encore « Backend API non détecté »**
+C'est un message de la version 1, qui avait besoin d'un serveur Express permanent : il s'affiche quand
+le déploiement sert encore l'ancienne version. Fusionne la branche à jour (ou pointe la branche de
+production vers elle) puis relance un déploiement complet.
 
 **Un gros fichier s'arrête en cours de route**
 Réduis `PART_SIZE_MB` à 5 et `UPLOAD_CONCURRENCY` à 2. Les morceaux déjà envoyés sont conservés lors
