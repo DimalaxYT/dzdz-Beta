@@ -21,6 +21,10 @@ const DISCORD_WEBHOOK_URL = (process.env.DISCORD_WEBHOOK_URL || '').trim();
 const DISCORD_USERNAME = process.env.DISCORD_USERNAME || 'DropQR';
 const DISCORD_MENTION = (process.env.DISCORD_MENTION || '').trim();
 const DISCORD_NOTIFY = process.env.DISCORD_NOTIFY !== 'false';
+const DISCORD_BOT_TOKEN = (process.env.DISCORD_BOT_TOKEN || '').trim();
+const DISCORD_INVITE_CHANNEL_ID = (process.env.DISCORD_INVITE_CHANNEL_ID || '').trim();
+const DISCORD_CONTACT_URL = (process.env.DISCORD_CONTACT_URL || '').trim();
+const DISCORD_INVITE_REFRESH_HOURS = Math.min(168, Math.max(1, parsePositiveEnvNumber('DISCORD_INVITE_REFRESH_HOURS', 24)));
 const DEFAULT_TTL_MINUTES = parsePositiveEnvNumber('DEFAULT_TTL_MINUTES', 15);
 const MAX_TTL_MINUTES = Math.max(DEFAULT_TTL_MINUTES, parsePositiveEnvNumber('MAX_TTL_MINUTES', 1440)); // 24h par défaut
 const MAX_FILE_SIZE_BYTES = parseMaxFileSize(); // null = pas de limite imposée par l'app
@@ -38,6 +42,7 @@ const MAX_CHUNK_SIZE_BYTES = 256 * 1024 * 1024;
 
 let db = { transfers: {} };
 let dbWriteQueue = Promise.resolve();
+let currentDiscordContactUrl = DISCORD_CONTACT_URL;
 
 function parsePositiveEnvNumber(name, fallback) {
   const value = Number(process.env[name]);
@@ -364,6 +369,54 @@ async function notifyDiscordTransfer(req, meta, payload) {
   }
 }
 
+async function refreshDiscordContactInvite(reason = 'scheduled') {
+  if (!DISCORD_BOT_TOKEN || !DISCORD_INVITE_CHANNEL_ID) {
+    return { updated: false, configured: false };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  const maxAge = Math.max(3600, Math.min(604800, Math.round(DISCORD_INVITE_REFRESH_HOURS * 2 * 60 * 60)));
+
+  try {
+    const response = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(DISCORD_INVITE_CHANNEL_ID)}/invites`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        max_age: maxAge,
+        max_uses: 0,
+        temporary: false,
+        unique: true
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      console.error(`Invitation Discord impossible (${response.status}):`, detail.slice(0, 240));
+      return { updated: false, configured: true, status: response.status };
+    }
+
+    const invite = await response.json();
+    if (!invite.code) {
+      console.error('Discord n’a pas renvoyé de code d’invitation.');
+      return { updated: false, configured: true, error: 'Code d’invitation absent' };
+    }
+
+    currentDiscordContactUrl = `https://discord.gg/${invite.code}`;
+    console.log(`Lien Discord de contact actualisé (${reason}).`);
+    return { updated: true, configured: true, url: currentDiscordContactUrl };
+  } catch (error) {
+    console.error('Actualisation du lien Discord impossible:', error.message);
+    return { updated: false, configured: true, error: error.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function registerStoredFile(req, { originalName, storedName, mimeType, size, ttlMinutes, deleteAfterDownload }) {
   const id = makeId();
   const deleteKey = makeId(24);
@@ -642,6 +695,8 @@ app.get('/api/config', (req, res) => {
     recommendedChunkSizeBytes: RECOMMENDED_CHUNK_SIZE_BYTES,
     uploadConcurrency: UPLOAD_CONCURRENCY,
     discordConfigured: Boolean(DISCORD_WEBHOOK_URL && DISCORD_NOTIFY),
+    discordContactUrl: currentDiscordContactUrl || null,
+    discordInviteRotationConfigured: Boolean(DISCORD_BOT_TOKEN && DISCORD_INVITE_CHANNEL_ID),
     sandboxPreview: isSandboxPreview(req),
     sandboxWarning: isSandboxPreview(req)
       ? 'La preview Arena/e2b ajoute une protection par token. Un QR scanné depuis un téléphone hors preview ne peut pas accéder à cette URL. Déploie le site ou lance-le sur ton réseau local avec PUBLIC_URL.'
@@ -1117,7 +1172,7 @@ function renderSharePage(req, meta) {
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=7" defer></script>
+  <script src="/assets/site.js?v=8" defer></script>
 </body>
 </html>`;
 }
@@ -1142,7 +1197,7 @@ function renderMessagePage(title, message) {
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=7" defer></script>
+  <script src="/assets/site.js?v=8" defer></script>
 </body>
 </html>`;
 }
@@ -1156,6 +1211,11 @@ ensureStorage()
       console.log(`DropQR démarré sur http://${HOST}:${PORT}`);
       console.log(`Stockage: local-disk | Limite fichier app: ${MAX_FILE_SIZE_BYTES ? formatBytes(MAX_FILE_SIZE_BYTES) : 'aucune'} | TTL défaut: ${DEFAULT_TTL_MINUTES} min | TTL max: ${MAX_TTL_MINUTES} min`);
       if (PUBLIC_URL) console.log(`URL publique configurée: ${PUBLIC_URL}`);
+      if (DISCORD_BOT_TOKEN && DISCORD_INVITE_CHANNEL_ID) {
+        refreshDiscordContactInvite('démarrage');
+        setInterval(() => refreshDiscordContactInvite('rotation quotidienne'), DISCORD_INVITE_REFRESH_HOURS * 60 * 60 * 1000);
+        console.log(`Rotation du lien Discord activée: toutes les ${DISCORD_INVITE_REFRESH_HOURS} heures.`);
+      }
     });
   })
   .catch((error) => {

@@ -6,6 +6,21 @@
   // éventuelles sont supprimées pour ne pas laisser d'historique côté navigateur.
   try { localStorage.removeItem('dropqr.transfers'); } catch (_error) {}
 
+  const contactLinks = [...document.querySelectorAll('[data-discord-contact]')];
+  if (contactLinks.length) {
+    fetch('/api/config', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((config) => {
+        if (!config || !config.discordContactUrl) return;
+        contactLinks.forEach((link) => {
+          link.href = config.discordContactUrl;
+          link.hidden = false;
+          link.textContent = 'Discord';
+        });
+      })
+      .catch(() => {});
+  }
+
   const parallaxItems = [...document.querySelectorAll('[data-parallax]')];
   const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .doc-section .card')];
 

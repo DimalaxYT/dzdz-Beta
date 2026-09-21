@@ -23,7 +23,7 @@
       <div class="doc-section">
         <section id="editeur" class="card"><h2>Éditeur du site</h2><p><strong>Nom ou pseudonyme :</strong> ano1by.</p><p><strong>Contact :</strong> Discord — ano1by.</p><p>Le contact principal du site est disponible via Discord. Pour les demandes liées à un transfert, indique si possible le code concerné sans partager de clé privée.</p></section>
 
-        <section id="service" class="card"><h2>Fonctionnement du service</h2><p>DropQR permet de transférer temporairement un fichier entre deux appareils. Aucun compte n'est nécessaire. Un code court et un lien sont générés pour accéder au fichier.</p><p>Les fichiers sont supprimés automatiquement à l'expiration du délai choisi ou après le premier téléchargement lorsque cette option est activée. Un redémarrage ou un redéploiement de l'hébergeur peut également interrompre un transfert.</p></section>
+        <section id="service" class="card"><h2>Fonctionnement du service</h2><p>DropQR permet de transférer temporairement un fichier entre deux appareils. Aucun compte n'est nécessaire. Un code court et un lien sont générés pour accéder au fichier.</p><p>Les fichiers sont supprimés automatiquement à l'expiration du délai choisi ou après le premier téléchargement lorsque cette option est activée. Un redémarrage ou un redéploiement de l'hébergeur peut également interrompre un transfert.</p><p>Lorsque la rotation Discord est activée, le bot crée une invitation classique pour le salon de contact et le lien affiché dans le footer est actualisé automatiquement. Le contact humain reste <strong>ano1by</strong> sur Discord.</p></section>
 
         <section id="donnees" class="card"><h2>Données traitées</h2><p>Pour assurer le transfert, DropQR traite temporairement le nom du fichier, son type, sa taille, sa date de création, sa date d'expiration et le nombre de téléchargements.</p><p>Le serveur conserve uniquement le hash de la clé de suppression. La clé elle-même est remise à la personne qui crée le transfert.</p><p>Si Discord est configuré, le code, le lien, le QR code, le nom, la taille et l'expiration sont envoyés au webhook Discord choisi par l'éditeur. Le message Discord est programmé pour être supprimé avec le transfert.</p></section>
 
@@ -33,8 +33,8 @@
       </div>
     </main>
 
-    <footer><span><strong>DropQR</strong> / mentions légales et confidentialité</span><span><a class="footer-action" href="/">Retour à l'accueil</a></span></footer>
+    <footer><span><strong>DropQR</strong> / mentions légales et confidentialité</span><span><a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a></span><span><a class="footer-action" href="/">Retour à l'accueil</a></span></footer>
   </div>
-  <script src="/assets/site.js?v=7" defer></script>
+  <script src="/assets/site.js?v=8" defer></script>
 </body>
 </html>

@@ -181,7 +181,25 @@ Après redéploiement, `GET /api/health` doit afficher :
 - la taille ;
 - l’expiration.
 
-Ne colle jamais un token de bot Discord directement dans le chat. Si on veut un vrai bot Discord avec commandes slash plus tard, on le fera avec un fichier `.env`.
+Ne colle jamais un token de bot Discord directement dans le chat.
+
+### Rotation quotidienne du lien de contact
+
+DropQR peut aussi actualiser automatiquement le lien de contact Discord. Le serveur crée une invitation classique dans le salon indiqué au démarrage puis la renouvelle selon `DISCORD_INVITE_REFRESH_HOURS`. Le lien public apparaît alors dans le footer du site.
+
+Une URL personnalisée comme `discord.gg/nom` dépend des avantages du serveur Discord et ne peut pas être créée par un bot. Une invitation classique fonctionne sans Nitro, si le bot possède la permission de créer des invitations dans le salon choisi.
+
+Variables Render :
+
+```env
+DISCORD_BOT_TOKEN=token_du_bot
+DISCORD_INVITE_CHANNEL_ID=id_du_salon
+DISCORD_INVITE_REFRESH_HOURS=24
+# Facultatif : lien de secours si le bot n’est pas activé
+DISCORD_CONTACT_URL=https://discord.gg/ton-invitation
+```
+
+Le token reste uniquement dans les variables secrètes de Render. Ne le committe jamais et ne le colle jamais dans le chat. Si le bot n’est pas configuré, le contact légal reste `ano1by` sur Discord et aucun lien automatique n’est affiché.
 
 ## Version 1.5.0
 
