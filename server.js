@@ -598,6 +598,9 @@ app.use('/assets', (req, res, next) => {
 }));
 
 function sendPage(res, fileName) {
+  // Les pages sont statiques et leurs assets sont versionnés: le navigateur peut
+  // les réutiliser immédiatement lors du passage d'un écran à l'autre.
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
   return res.sendFile(path.join(PUBLIC_DIR, fileName));
 }
 
@@ -1088,7 +1091,7 @@ function renderSharePage(req, meta) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=13">
+  <link rel="stylesheet" href="/assets/app.css?v=14">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1112,7 +1115,7 @@ function renderSharePage(req, meta) {
       <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
     </main>
   </div>
-  <script src="/assets/site.js?v=4" defer></script>
+  <script src="/assets/site.js?v=6" defer></script>
 </body>
 </html>`;
 }
@@ -1124,7 +1127,7 @@ function renderMessagePage(title, message) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=13">
+  <link rel="stylesheet" href="/assets/app.css?v=14">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1136,7 +1139,7 @@ function renderMessagePage(title, message) {
       <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
     </main>
   </div>
-  <script src="/assets/site.js?v=4" defer></script>
+  <script src="/assets/site.js?v=6" defer></script>
 </body>
 </html>`;
 }

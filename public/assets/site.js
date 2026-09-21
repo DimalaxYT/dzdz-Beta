@@ -31,18 +31,30 @@
   }
 
   const prefetched = new Set();
-  document.querySelectorAll('a[href]').forEach((link) => {
-    const href = link.getAttribute('href');
-    if (!href || !href.startsWith('/') || href.startsWith('//') || href.startsWith('/api/') || link.target) return;
-    link.addEventListener('pointerenter', () => {
-      if (prefetched.has(href)) return;
-      prefetched.add(href);
-      const resource = document.createElement('link');
-      resource.rel = 'prefetch';
-      resource.href = href;
-      document.head.appendChild(resource);
-    }, { passive: true });
+  const internalLinks = [...document.querySelectorAll('a[href]')]
+    .map((link) => ({ link, href: link.getAttribute('href') }))
+    .filter(({ link, href }) => href && href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/api/') && !href.startsWith('#') && !link.target)
+    .filter(({ href }, index, links) => links.findIndex((entry) => entry.href === href) === index);
+
+  const prefetchPage = (href) => {
+    if (prefetched.has(href)) return;
+    prefetched.add(href);
+    // fetch() remplit le cache HTTP utilisé par la navigation normale,
+    // y compris dans les navigateurs qui ignorent rel=prefetch.
+    fetch(href, { credentials: 'same-origin', cache: 'force-cache' }).catch(() => {});
+  };
+
+  internalLinks.forEach(({ link, href }) => {
+    link.addEventListener('pointerenter', () => prefetchPage(href), { passive: true });
   });
+
+  const warmNavigation = () => {
+    internalLinks.forEach(({ href }, index) => {
+      window.setTimeout(() => prefetchPage(href), index * 90);
+    });
+  };
+  if ('requestIdleCallback' in window) window.requestIdleCallback(warmNavigation, { timeout: 900 });
+  else window.setTimeout(warmNavigation, 250);
 
   if (reducedMotion || !parallaxItems.length) return;
 

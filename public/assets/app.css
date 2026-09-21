@@ -48,7 +48,7 @@ body::before {
 }
 
 button, input, select { font: inherit; }
-button, a { -webkit-tap-highlight-color: transparent; }
+button, a { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 a { color: inherit; }
 
 .shell {
