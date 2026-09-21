@@ -6,8 +6,9 @@ DropQR est un site multi-pages pour transférer temporairement des fichiers entr
 
 - `/` : accueil
 - `/upload` : création d’un transfert avec barre de progression
-- `/dashboard` : suivi local des liens créés depuis ce navigateur
+- `/receive` : recherche d’un transfert par code
 - `/help` : aide, déploiement et explication du QR code dans la preview Arena
+- `/mentions` : mentions légales, confidentialité et données traitées
 - `/t/:id` : page publique de téléchargement
 
 ## Backend
@@ -73,7 +74,7 @@ Pour un vrai scan QR depuis téléphone, il faut :
 
 ## Taille des fichiers
 
-Par défaut, DropQR n’impose plus de limite de taille côté application.
+Par défaut, DropQR accepte jusqu’à 10 Go par transfert côté application. La capacité réelle dépend toutefois du disque Render, du proxy, du navigateur et du temps de connexion.
 
 Depuis la version 1.5.0, l’interface envoie les fichiers par morceaux configurables. Ça évite les erreurs fréquentes de plateforme liées aux gros fichiers, comme ton HTTP 400 sur un fichier de 51,7 Mo.
 
@@ -87,7 +88,7 @@ La réponse doit contenir :
 
 ```json
 {
-  "version": "1.7.0",
+  "version": "1.8.0",
   "chunkedUpload": true
 }
 ```
@@ -116,11 +117,17 @@ MAX_FILE_SIZE_MB=2048 npm start
 | --- | ---: | --- |
 | `PORT` | `3000` | Port HTTP |
 | `HOST` | `0.0.0.0` | Adresse d’écoute |
+| `TRUST_PROXY` | `1` | Nombre de reverse proxies de confiance |
 | `PUBLIC_URL` | vide | URL mise dans le QR code |
 | `MAX_FILE_SIZE` | vide | Limite optionnelle, ex: `2gb`, `500mb` |
 | `MAX_FILE_SIZE_MB` | vide | Limite optionnelle en Mo |
 | `DEFAULT_TTL_MINUTES` | `15` | Durée par défaut |
 | `MAX_TTL_MINUTES` | `1440` | Durée max autorisée |
+| `CHUNK_SIZE_MB` | `16` | Taille recommandée d’un morceau, plafonnée à 256 Mo |
+| `UPLOAD_CONCURRENCY` | `5` | Nombre maximal de morceaux envoyés en parallèle |
+| `DISCORD_CONTACT_URL` | vide | Lien Discord de secours affiché dans le footer |
+| `DISCORD_INVITE_CHANNEL_ID` | vide | Salon utilisé par la rotation d’invitations |
+| `DISCORD_INVITE_REFRESH_HOURS` | `24` | Intervalle de rotation du lien Discord |
 
 ## API
 
@@ -129,8 +136,10 @@ MAX_FILE_SIZE_MB=2048 npm start
 - `GET /api/stats`
 - `POST /api/transfers`
 - `POST /api/transfers/chunk`
+- `POST /api/transfers/complete`
 - `GET /api/transfers/:id`
 - `DELETE /api/transfers/:id`
+- `GET /api/codes/:code`
 - `GET /t/:id`
 - `GET /download/:id`
 
@@ -181,7 +190,25 @@ Après redéploiement, `GET /api/health` doit afficher :
 - la taille ;
 - l’expiration.
 
-Ne colle jamais un token de bot Discord directement dans le chat. Si on veut un vrai bot Discord avec commandes slash plus tard, on le fera avec un fichier `.env`.
+Ne colle jamais un token de bot Discord directement dans le chat.
+
+### Rotation quotidienne du lien de contact
+
+DropQR peut aussi actualiser automatiquement le lien de contact Discord. Le serveur crée une invitation classique dans le salon indiqué au démarrage puis la renouvelle selon `DISCORD_INVITE_REFRESH_HOURS`. Le lien public apparaît alors dans le footer du site.
+
+Une URL personnalisée comme `discord.gg/nom` dépend des avantages du serveur Discord et ne peut pas être créée par un bot. Une invitation classique fonctionne sans Nitro, si le bot possède la permission de créer des invitations dans le salon choisi.
+
+Variables Render :
+
+```env
+DISCORD_BOT_TOKEN=token_du_bot
+DISCORD_INVITE_CHANNEL_ID=id_du_salon
+DISCORD_INVITE_REFRESH_HOURS=24
+# Facultatif : lien de secours si le bot n’est pas activé
+DISCORD_CONTACT_URL=https://discord.gg/ton-invitation
+```
+
+Le token reste uniquement dans les variables secrètes de Render. Ne le committe jamais et ne le colle jamais dans le chat. Si le bot n’est pas configuré, le contact légal reste `ano1by` sur Discord et aucun lien automatique n’est affiché.
 
 ## Version 1.5.0
 
@@ -204,7 +231,7 @@ La réponse doit contenir :
 
 ```json
 {
-  "version": "1.7.0",
+  "version": "1.8.0",
   "discordConfigured": true
 }
 ```
@@ -241,7 +268,7 @@ Support vidéo :
 - le bouton de téléchargement reste disponible pour récupérer le fichier original.
 
 
-## Version 1.7.0
+## Version 1.8.0
 
 Améliorations demandées :
 

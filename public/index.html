@@ -3,70 +3,82 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DropQR — transfert temporaire par QR code</title>
-  <link rel="stylesheet" href="/assets/app.css?v=11">
+  <title>DropQR — transfert temporaire</title>
+  <link rel="stylesheet" href="/assets/app.css?v=15">
 </head>
-<body>
+<body class="page-home">
   <div class="shell">
     <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=11" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
       <div class="nav-links">
         <a class="active" href="/">Accueil</a>
         <a href="/upload">Envoyer</a>
         <a href="/receive">Recevoir</a>
-        <a href="/dashboard">Mes liens</a>
         <a href="/help">Aide</a>
       </div>
     </nav>
-
-    <header class="hero">
-      <div>
-        <div class="eyebrow">QR code · Backend Express · Auto-suppression</div>
-        <h1>Transfère tes fichiers <span class="gradient-text">sans cloud permanent.</span></h1>
-        <p class="lead">DropQR crée un lien temporaire et un QR code. L’autre appareil scanne, télécharge, puis le backend supprime le fichier après le premier téléchargement ou à expiration.</p>
-        <div class="actions">
-          <a class="btn primary" href="/upload">Créer un transfert</a>
-          <a class="btn" href="/help#deploy">Voir comment le mettre en ligne</a>
+    <main>
+      <header class="hero">
+        <div class="hero-main">
+          <div class="eyebrow">Transfert temporaire / QR / sans compte</div>
+          <h1>Le fichier passe. Le lien disparaît.</h1>
+          <p class="lead">DropQR crée un passage court entre deux appareils. Tu déposes, tu partages un code, puis le fichier est supprimé après téléchargement ou expiration.</p>
+          <div class="actions">
+            <a class="btn primary" href="/upload">Déposer un fichier</a>
+            <a class="btn" href="/receive">Entrer un code</a>
+          </div>
         </div>
+        <aside class="signal-card" data-parallax data-speed="-.1" aria-label="Aperçu d'un transfert">
+          <div class="signal-head"><span>Canal temporaire</span><span class="signal-state">Opérationnel</span></div>
+          <div class="signal-code">Q7R-4M2</div>
+          <div class="signal-file">
+            <span class="file-mark" aria-hidden="true"></span>
+            <div><strong>archive-projet.zip</strong><span>840 Mo / expire dans 15 min</span></div>
+          </div>
+          <div class="signal-meter" aria-label="Progression 76 pour cent"><span></span></div>
+          <div class="signal-foot"><span>QR envoyé</span><span>Nettoyage armé</span></div>
+          <div class="qr-dummy" aria-hidden="true"></div>
+        </aside>
+      </header>
+      <div class="home-rail" aria-label="Caractéristiques">
+        <span>Jusqu'à <strong data-max-file-size>10 Go</strong></span><span>Morceaux parallèles</span><span>Vidéos lisibles</span><span>Suppression automatique</span><span>Webhooks Discord</span>
       </div>
-
-      <aside class="hero-card" aria-label="Résumé technique">
-        <h2 class="mini-title">Ce qui tourne côté serveur</h2>
-        <ul class="mini-list">
-          <li><span class="check">1</span><span>Upload streamé vers le disque serveur, pas en mémoire.</span></li>
-          <li><span class="check">2</span><span>Métadonnées stockées dans une petite base JSON locale.</span></li>
-          <li><span class="check">3</span><span>Nettoyage automatique toutes les minutes.</span></li>
-        </ul>
-      </aside>
-    </header>
-
-    <section class="feature-grid" aria-label="Fonctionnalités">
-      <article class="card feature-card">
-        <div class="pill">Upload avec progression</div>
-        <h3>Barre de progression réelle</h3>
-        <p>Le navigateur affiche le pourcentage, la vitesse et le temps restant pendant l’envoi.</p>
-      </article>
-      <article class="card feature-card">
-        <div class="pill">Nettoyage</div>
-        <h3>Pas de stockage inutile</h3>
-        <p>Chaque fichier a une durée de vie. Tu peux aussi supprimer manuellement depuis “Mes liens”.</p>
-      </article>
-      <article class="card feature-card">
-        <div class="pill">Multi-pages</div>
-        <h3>Un vrai mini-produit</h3>
-        <p>Accueil, page de transfert, page de suivi local, page d’aide et routes API backend.</p>
-      </article>
-    </section>
-
-    <section class="card" style="margin-top:16px">
-      <h2 style="margin:0 0 10px;letter-spacing:-.04em">Important pour le QR code dans cette preview</h2>
-      <p style="margin:0;color:#cbd5e1;line-height:1.6">La preview Arena/e2b peut demander un header de sécurité nommé <code>e2b-traffic-access-token</code>. Un téléphone qui scanne le QR code n’a pas ce header, donc il peut afficher “Missing Traffic Access Token”. Ce n’est pas un bug de DropQR : pour scanner depuis un vrai téléphone, lance le site sur ton réseau local ou déploie-le sur un domaine public.</p>
-    </section>
-
+      <section class="stat-grid" aria-label="Résumé du service">
+        <article class="stat-card"><strong>01</strong><span>Un code court pour retrouver le transfert.</span></article>
+        <article class="stat-card"><strong>15 min</strong><span>Une durée courte par défaut, modifiable à l'envoi.</span></article>
+        <article class="stat-card"><strong>0 trace</strong><span>Le fichier et son lien ne sont pas conservés indéfiniment.</span></article>
+      </section>
+      <div class="section-head">
+        <div><div class="section-label">Le système</div><h2>Un outil direct, pas un espace de stockage.</h2></div>
+        <p>Chaque écran a une action claire. Le destinataire n'a pas besoin de compte ni d'installation.</p>
+      </div>
+      <section class="feature-grid" aria-label="Fonctionnalités">
+        <article class="feature-card">
+          <div class="feature-index"><span>01 / ENVOYER</span></div>
+          <h3>Un upload qui avance vraiment</h3>
+          <p>Les fichiers lourds sont découpés en morceaux et envoyés en parallèle avec une progression visible.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-index"><span>02 / PARTAGER</span></div>
+          <h3>Un code lisible en un coup d'œil</h3>
+          <p>Le QR et le code court ouvrent la même page de réception. Partage uniquement ce dont tu as besoin.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-index"><span>03 / OUBLIER</span></div>
+          <h3>Une fin prévue dès le départ</h3>
+          <p>Le transfert disparaît à expiration, après le premier téléchargement ou depuis ton tableau de bord.</p>
+        </article>
+      </section>
+      <section class="info-strip">
+        <h2>La preview n'est pas le réseau local.</h2>
+        <p>Dans Arena, un QR scanné par un téléphone peut rencontrer la protection de la plateforme. Pour un vrai test mobile, utilise l'URL Render publique ou lance DropQR sur ton Wi-Fi local.</p>
+      </section>
+    </main>
     <footer>
-      <span><strong>DropQR</strong> — fichiers temporaires, liens courts, QR code.</span>
-      <span><a href="/api/health">API health</a></span>
-    </footer>
+      <span><strong>DropQR</strong> / fichiers temporaires / interface sans compte</span>
+      <span><a href="/api/health">État du backend</a></span>
+    <span><a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a></span><span><a class="footer-action" href="/mentions">Mentions</a></span></footer>
   </div>
+  <script src="/assets/site.js?v=9" defer></script>
 </body>
 </html>

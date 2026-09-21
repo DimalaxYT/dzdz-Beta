@@ -10,9 +10,14 @@ const { pipeline } = require('stream/promises');
 const path = require('path');
 
 const app = express();
-app.set('trust proxy', true);
+const trustProxyRaw = String(process.env.TRUST_PROXY || '1').trim().toLowerCase();
+const trustProxy = trustProxyRaw === 'false'
+  ? false
+  : (/^\d+$/.test(trustProxyRaw) ? Number(trustProxyRaw) : 1);
+app.set('trust proxy', trustProxy);
+app.disable('x-powered-by');
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -21,10 +26,18 @@ const DISCORD_WEBHOOK_URL = (process.env.DISCORD_WEBHOOK_URL || '').trim();
 const DISCORD_USERNAME = process.env.DISCORD_USERNAME || 'DropQR';
 const DISCORD_MENTION = (process.env.DISCORD_MENTION || '').trim();
 const DISCORD_NOTIFY = process.env.DISCORD_NOTIFY !== 'false';
+const DISCORD_BOT_TOKEN = (process.env.DISCORD_BOT_TOKEN || '').trim();
+const DISCORD_INVITE_CHANNEL_ID = (process.env.DISCORD_INVITE_CHANNEL_ID || '').trim();
+const DISCORD_CONTACT_URL = (process.env.DISCORD_CONTACT_URL || '').trim();
+const DISCORD_INVITE_REFRESH_HOURS = Math.min(168, Math.max(1, parsePositiveEnvNumber('DISCORD_INVITE_REFRESH_HOURS', 24)));
 const DEFAULT_TTL_MINUTES = parsePositiveEnvNumber('DEFAULT_TTL_MINUTES', 15);
 const MAX_TTL_MINUTES = Math.max(DEFAULT_TTL_MINUTES, parsePositiveEnvNumber('MAX_TTL_MINUTES', 1440)); // 24h par défaut
 const MAX_FILE_SIZE_BYTES = parseMaxFileSize(); // null = pas de limite imposée par l'app
-const RECOMMENDED_CHUNK_SIZE_BYTES = Math.max(1024 * 1024, parsePositiveEnvNumber('CHUNK_SIZE_MB', 16) * 1024 * 1024);
+const MAX_CHUNK_SIZE_BYTES = 256 * 1024 * 1024;
+const RECOMMENDED_CHUNK_SIZE_BYTES = Math.min(
+  MAX_CHUNK_SIZE_BYTES,
+  Math.max(1024 * 1024, parsePositiveEnvNumber('CHUNK_SIZE_MB', 16) * 1024 * 1024)
+);
 const UPLOAD_CONCURRENCY = Math.min(8, Math.max(1, Math.floor(parsePositiveEnvNumber('UPLOAD_CONCURRENCY', 5))));
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -33,11 +46,12 @@ const FILES_DIR = path.join(STORAGE_DIR, 'files');
 const CHUNKS_DIR = path.join(STORAGE_DIR, 'chunks');
 const DB_PATH = path.join(STORAGE_DIR, 'db.json');
 const discordDeleteTimers = new Map();
+const activeDownloads = new Set();
 const MAX_TIMEOUT_MS = 2_147_000_000;
-const MAX_CHUNK_SIZE_BYTES = 256 * 1024 * 1024;
 
 let db = { transfers: {} };
 let dbWriteQueue = Promise.resolve();
+let currentDiscordContactUrl = DISCORD_CONTACT_URL;
 
 function parsePositiveEnvNumber(name, fallback) {
   const value = Number(process.env[name]);
@@ -45,25 +59,29 @@ function parsePositiveEnvNumber(name, fallback) {
 }
 
 function parseMaxFileSize() {
+  const fallback = 10 * 1024 ** 3;
   // Par défaut, DropQR accepte jusqu'à 10 Go par transfert.
   // Les limites réelles peuvent encore venir du disque ou de l'hébergeur.
-  if (!process.env.MAX_FILE_SIZE_MB && !process.env.MAX_FILE_SIZE) return 10 * 1024 ** 3;
+  if (!process.env.MAX_FILE_SIZE_MB && !process.env.MAX_FILE_SIZE) return fallback;
 
   const unlimitedValues = new Set(['0', 'none', 'no', 'false', 'unlimited', 'illimite', 'illimité']);
   if (process.env.MAX_FILE_SIZE && unlimitedValues.has(String(process.env.MAX_FILE_SIZE).trim().toLowerCase())) return null;
 
   if (process.env.MAX_FILE_SIZE_MB) {
     const mb = Number(process.env.MAX_FILE_SIZE_MB);
-    return Number.isFinite(mb) && mb > 0 ? Math.floor(mb * 1024 * 1024) : null;
+    if (Number.isFinite(mb) && mb > 0) return Math.floor(mb * 1024 * 1024);
+    // Une variable MB invalide ne doit jamais désactiver la limite.
+    console.warn('MAX_FILE_SIZE_MB invalide: tentative avec MAX_FILE_SIZE ou valeur par défaut.');
   }
 
   const raw = String(process.env.MAX_FILE_SIZE || '').trim().toLowerCase();
   const match = raw.match(/^(\d+(?:\.\d+)?)(b|kb|mb|gb|tb)?$/);
-  if (!match) return 10 * 1024 ** 3;
+  if (!match) return fallback;
   const value = Number(match[1]);
   const unit = match[2] || 'b';
   const factor = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3, tb: 1024 ** 4 }[unit];
-  return Math.floor(value * factor);
+  const bytes = value * factor;
+  return Number.isSafeInteger(Math.floor(bytes)) && bytes > 0 ? Math.floor(bytes) : fallback;
 }
 
 function now() {
@@ -119,6 +137,13 @@ function escapeHtml(value) {
 function cleanOriginalName(name) {
   const base = path.basename(String(name || 'fichier'));
   return base.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180) || 'fichier';
+}
+
+function normalizeMimeType(value) {
+  const raw = String(value || '').split(';', 1)[0].trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(raw)
+    ? raw
+    : 'application/octet-stream';
 }
 
 function storedFilePath(storedName) {
@@ -210,6 +235,7 @@ function safeUploadId(value) {
 
 async function buildTransferResponse(req, meta, deleteKey) {
   const baseUrl = getBaseUrl(req);
+  const mimeType = normalizeMimeType(meta.mimeType);
   const shareUrl = `${baseUrl}${getReceivePath(meta)}`;
   const downloadUrl = `${baseUrl}/download/${encodeURIComponent(meta.id)}`;
   const previewUrl = `${baseUrl}/view/${encodeURIComponent(meta.id)}`;
@@ -225,7 +251,7 @@ async function buildTransferResponse(req, meta, deleteKey) {
     code: meta.code,
     deleteKey,
     fileName: meta.originalName,
-    mimeType: meta.mimeType,
+    mimeType,
     size: meta.size,
     sizeHuman: formatBytes(meta.size),
     createdAt: new Date(meta.createdAt).toISOString(),
@@ -236,7 +262,7 @@ async function buildTransferResponse(req, meta, deleteKey) {
     shareUrl,
     downloadUrl,
     previewUrl,
-    canPreview: isVideoMime(meta.mimeType),
+    canPreview: isVideoMime(mimeType),
     qrDataUrl,
     discordConfigured: Boolean(DISCORD_WEBHOOK_URL && DISCORD_NOTIFY),
     sandboxPreview: isSandboxPreview(req),
@@ -364,6 +390,54 @@ async function notifyDiscordTransfer(req, meta, payload) {
   }
 }
 
+async function refreshDiscordContactInvite(reason = 'scheduled') {
+  if (!DISCORD_BOT_TOKEN || !DISCORD_INVITE_CHANNEL_ID) {
+    return { updated: false, configured: false };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  const maxAge = Math.max(3600, Math.min(604800, Math.round(DISCORD_INVITE_REFRESH_HOURS * 2 * 60 * 60)));
+
+  try {
+    const response = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(DISCORD_INVITE_CHANNEL_ID)}/invites`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        max_age: maxAge,
+        max_uses: 0,
+        temporary: false,
+        unique: true
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      console.error(`Invitation Discord impossible (${response.status}):`, detail.slice(0, 240));
+      return { updated: false, configured: true, status: response.status };
+    }
+
+    const invite = await response.json();
+    if (!invite.code) {
+      console.error('Discord n’a pas renvoyé de code d’invitation.');
+      return { updated: false, configured: true, error: 'Code d’invitation absent' };
+    }
+
+    currentDiscordContactUrl = `https://discord.gg/${invite.code}`;
+    console.log(`Lien Discord de contact actualisé (${reason}).`);
+    return { updated: true, configured: true, url: currentDiscordContactUrl };
+  } catch (error) {
+    console.error('Actualisation du lien Discord impossible:', error.message);
+    return { updated: false, configured: true, error: error.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function registerStoredFile(req, { originalName, storedName, mimeType, size, ttlMinutes, deleteAfterDownload }) {
   const id = makeId();
   const deleteKey = makeId(24);
@@ -372,7 +446,7 @@ async function registerStoredFile(req, { originalName, storedName, mimeType, siz
     code: makeTransferCode(),
     originalName: cleanOriginalName(originalName),
     storedName,
-    mimeType: mimeType || 'application/octet-stream',
+    mimeType: normalizeMimeType(mimeType),
     size: Number(size || 0),
     createdAt: now(),
     expiresAt: now() + ttlMinutes * 60 * 1000,
@@ -469,7 +543,17 @@ async function deleteTransfer(id, reason = 'cleanup') {
   return true;
 }
 
+let cleanupPromise = null;
+
 async function cleanupExpiredTransfers() {
+  if (cleanupPromise) return cleanupPromise;
+  cleanupPromise = performCleanupExpiredTransfers().finally(() => {
+    cleanupPromise = null;
+  });
+  return cleanupPromise;
+}
+
+async function performCleanupExpiredTransfers() {
   const timestamp = now();
   const transfers = transferStore();
   const ids = Object.keys(transfers);
@@ -586,21 +670,30 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/api', apiRateLimiter);
 app.use('/api/transfers', uploadRateLimiter);
-app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), {
-  etag: false,
-  lastModified: false,
-  maxAge: 0
+app.use('/assets', (req, res, next) => {
+  // Les assets sont versionnés dans le HTML: ils peuvent être gardés en cache
+  // sans ralentir les changements de page entre deux écrans.
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+  next();
+}, express.static(path.join(PUBLIC_DIR, 'assets'), {
+  etag: true,
+  lastModified: true,
+  maxAge: '1d'
 }));
 
 function sendPage(res, fileName) {
+  // Les pages sont statiques et leurs assets sont versionnés: le navigateur peut
+  // les réutiliser immédiatement lors du passage d'un écran à l'autre.
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
   return res.sendFile(path.join(PUBLIC_DIR, fileName));
 }
 
 app.get('/', (_req, res) => sendPage(res, 'home.html'));
 app.get('/upload', (_req, res) => sendPage(res, 'upload.html'));
-app.get('/dashboard', (_req, res) => sendPage(res, 'dashboard.html'));
+app.get('/dashboard', (_req, res) => res.redirect('/'));
 app.get('/receive', (_req, res) => sendPage(res, 'receive.html'));
 app.get('/help', (_req, res) => sendPage(res, 'help.html'));
+app.get('/mentions', (_req, res) => sendPage(res, 'mentions.html'));
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -633,6 +726,8 @@ app.get('/api/config', (req, res) => {
     recommendedChunkSizeBytes: RECOMMENDED_CHUNK_SIZE_BYTES,
     uploadConcurrency: UPLOAD_CONCURRENCY,
     discordConfigured: Boolean(DISCORD_WEBHOOK_URL && DISCORD_NOTIFY),
+    discordContactUrl: currentDiscordContactUrl || null,
+    discordInviteRotationConfigured: Boolean(DISCORD_BOT_TOKEN && DISCORD_INVITE_CHANNEL_ID),
     sandboxPreview: isSandboxPreview(req),
     sandboxWarning: isSandboxPreview(req)
       ? 'La preview Arena/e2b ajoute une protection par token. Un QR scanné depuis un téléphone hors preview ne peut pas accéder à cette URL. Déploie le site ou lance-le sur ton réseau local avec PUBLIC_URL.'
@@ -725,7 +820,7 @@ async function assembleChunkUpload(req, uploadId) {
     }
 
     const originalName = cleanOriginalName(meta.originalName);
-    const mimeType = meta.mimeType || 'application/octet-stream';
+    const mimeType = normalizeMimeType(meta.mimeType);
     const ttlMinutes = parseTtlMinutes(meta.ttlMinutes);
     const deleteAfterDownload = parseDeleteAfterDownload(meta.deleteAfterDownload);
     const ext = path.extname(originalName || '').slice(0, 24).replace(/[^a-zA-Z0-9.]/g, '');
@@ -777,7 +872,7 @@ async function uploadChunk(req, res, next) {
     const totalChunks = Number(req.body.totalChunks);
     const totalSize = Number(req.body.totalSize);
     const originalName = cleanOriginalName(req.body.fileName);
-    const mimeType = req.body.mimeType || req.file.mimetype || 'application/octet-stream';
+    const mimeType = normalizeMimeType(req.body.mimeType || req.file.mimetype);
     const ttlMinutes = parseTtlMinutes(req.body.ttlMinutes);
     const deleteAfterDownload = parseDeleteAfterDownload(req.body.deleteAfterDownload);
 
@@ -955,7 +1050,8 @@ app.get('/view/:id', async (req, res) => {
     await deleteTransfer(id, 'expiration-preview');
     return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
   }
-  if (!isVideoMime(meta.mimeType)) {
+  const mimeType = normalizeMimeType(meta.mimeType);
+  if (!isVideoMime(mimeType)) {
     return res.status(415).send(renderMessagePage('Aperçu indisponible', 'Seules les vidéos peuvent être lues directement dans le navigateur. Utilise le bouton de téléchargement.'));
   }
 
@@ -967,7 +1063,6 @@ app.get('/view/:id', async (req, res) => {
 
   const stat = await fsp.stat(filePath);
   const total = stat.size;
-  const mimeType = meta.mimeType || 'application/octet-stream';
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', mimeType);
@@ -1020,12 +1115,18 @@ app.get('/download/:id', async (req, res) => {
     return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
   }
 
+  if (meta.deleteAfterDownload && activeDownloads.has(id)) {
+    return res.status(409).send(renderMessagePage('Téléchargement déjà en cours', 'Ce transfert est déjà en train d’être récupéré. Réessaie dans quelques instants.'));
+  }
+
+  if (meta.deleteAfterDownload) activeDownloads.add(id);
   meta.downloads = Number(meta.downloads || 0) + 1;
   meta.lastDownloadAt = now();
   await saveDb().catch((error) => console.error('Erreur compteur téléchargement:', error));
 
   res.setHeader('Cache-Control', 'no-store');
   res.download(filePath, meta.originalName, async (error) => {
+    if (meta.deleteAfterDownload) activeDownloads.delete(id);
     if (error) {
       if (!res.headersSent) console.error('Erreur téléchargement:', error);
       return;
@@ -1042,6 +1143,9 @@ app.use((req, res) => {
 });
 
 app.use((error, _req, res, _next) => {
+  if (error.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON invalide.' });
+  }
   console.error(error);
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
@@ -1055,11 +1159,12 @@ app.use((error, _req, res, _next) => {
 
 function publicTransferPayload(req, meta) {
   const baseUrl = getBaseUrl(req);
+  const mimeType = normalizeMimeType(meta.mimeType);
   return {
     id: meta.id,
     code: meta.code,
     fileName: meta.originalName,
-    mimeType: meta.mimeType,
+    mimeType,
     size: meta.size,
     sizeHuman: formatBytes(meta.size),
     createdAt: new Date(meta.createdAt).toISOString(),
@@ -1070,7 +1175,7 @@ function publicTransferPayload(req, meta) {
     shareUrl: `${baseUrl}${getReceivePath(meta)}`,
     downloadUrl: `${baseUrl}/download/${encodeURIComponent(meta.id)}`,
     previewUrl: `${baseUrl}/view/${encodeURIComponent(meta.id)}`,
-    canPreview: isVideoMime(meta.mimeType)
+    canPreview: isVideoMime(mimeType)
   };
 }
 
@@ -1082,45 +1187,33 @@ function renderSharePage(req, meta) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Télécharger ${escapeHtml(meta.originalName)} · DropQR</title>
-  <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 12% 8%, rgba(103,232,249,.24), transparent 30%), radial-gradient(circle at 86% 0%, rgba(167,139,250,.25), transparent 28%), #050816; color: #f8fafc; padding: 22px; }
-    main { width: min(680px, 100%); background: rgba(15, 23, 42, .86); border: 1px solid rgba(148, 163, 184, .22); border-radius: 34px; padding: clamp(22px, 5vw, 34px); box-shadow: 0 24px 80px rgba(0, 0, 0, .38); }
-    .brand { display: inline-flex; align-items: center; gap: 10px; color: #cffafe; font-weight: 950; }
-    .brand span:first-child { width: 38px; height: 38px; border-radius: 13px; display: grid; place-items: center; overflow: hidden; }
-    .brand img { width: 38px; height: 38px; display: block; }
-    h1 { margin: 20px 0 10px; font-size: clamp(34px, 8vw, 58px); line-height: .92; letter-spacing: -.07em; }
-    .lead { margin: 0 0 22px; color: #cbd5e1; line-height: 1.58; }
-    .file { margin: 20px 0; padding: 18px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.09); border-radius: 22px; word-break: break-word; }
-    .name { font-size: 22px; font-weight: 950; letter-spacing: -.035em; }
-    .meta { color: #cbd5e1; margin-top: 10px; display: grid; gap: 6px; }
-    a.button { display: inline-flex; justify-content: center; align-items: center; width: 100%; box-sizing: border-box; text-decoration: none; color: #06111f; background: linear-gradient(135deg, #67e8f9, #93c5fd 52%, #a78bfa); font-weight: 950; border-radius: 18px; padding: 17px 18px; margin-top: 8px; }
-    .small { color: #94a3b8; font-size: 14px; line-height: 1.55; margin-top: 18px; }
-    .warning { margin-top: 16px; color: #fde68a; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); border-radius: 18px; padding: 14px; line-height: 1.5; }
-    .video { width: 100%; margin: 8px 0 14px; border-radius: 18px; background: #020617; border: 1px solid rgba(148,163,184,.22); display: block; max-height: 70vh; }
-  </style>
+  <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
+  <link rel="stylesheet" href="/assets/app.css?v=15">
 </head>
 <body>
-  <main>
-    <div class="brand"><span><img src="/assets/logo.svg?v=5" alt=""></span><strong>DropQR</strong></div>
-    <h1>Fichier prêt à télécharger</h1>
-    <p class="lead">Ce lien est temporaire. Télécharge le fichier avant son expiration.</p>
-    <section class="file">
-      <div class="name">${escapeHtml(meta.originalName)}</div>
-      <div class="meta">
-        <span>Code: ${escapeHtml(meta.code || meta.id)}</span>
-        <span>Taille: ${escapeHtml(formatBytes(meta.size))}</span>
-        <span>Expire: ${escapeHtml(expiresAt)}</span>
-        <span>${meta.deleteAfterDownload ? 'Suppression automatique après le premier téléchargement.' : 'Suppression automatique à expiration.'}</span>
-      </div>
-    </section>
-    ${isVideoMime(meta.mimeType) ? `<video class="video" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
-    <a class="button" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
-    ${isSandboxPreview(req) ? '<div class="warning">Tu es sur une preview Arena/e2b. Si cette page a été ouverte depuis un téléphone via QR code, elle peut être bloquée par le token de sécurité de la plateforme. Sur un vrai déploiement ou en local avec PUBLIC_URL, le QR fonctionnera normalement.</div>' : ''}
-    <p class="small">Ne partage ce lien qu’avec les appareils/personnes autorisés. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
-  </main>
+  <div class="shell share-shell">
+    <main class="share-page card">
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <div class="page-code">PUBLIC / DOWNLOAD</div>
+      <h1>Le fichier est prêt.</h1>
+      <p class="lead">Ce passage est temporaire. Récupère le fichier avant son expiration.</p>
+      <section class="share-file">
+        <div class="name">${escapeHtml(meta.originalName)}</div>
+        <div class="share-meta">
+          <span>Code : ${escapeHtml(meta.code || meta.id)}</span>
+          <span>Taille : ${escapeHtml(formatBytes(meta.size))}</span>
+          <span>Expire : ${escapeHtml(expiresAt)}</span>
+          <span>${meta.deleteAfterDownload ? 'Suppression après le premier téléchargement.' : 'Suppression automatique à expiration.'}</span>
+        </div>
+      </section>
+      ${payload.canPreview ? `<video class="video-preview" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
+      <a class="btn primary share-download" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
+      ${isSandboxPreview(req) ? '<div class="warning" style="margin-top:16px">La preview Arena peut demander un token de sécurité à un téléphone externe. Utilise l’URL Render ou le réseau local pour un vrai scan.</div>' : ''}
+      <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
+      <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
+    </main>
+  </div>
+  <script src="/assets/site.js?v=9" defer></script>
 </body>
 </html>`;
 }
@@ -1131,16 +1224,22 @@ function renderMessagePage(title, message) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)} · DropQR</title>
-  <style>
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #050816; color: #f8fafc; font-family: system-ui, -apple-system, Segoe UI, sans-serif; padding: 24px; }
-    main { max-width: 590px; background: #0f172a; border: 1px solid rgba(148,163,184,.22); border-radius: 26px; padding: 30px; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.32); }
-    h1 { margin-top: 0; letter-spacing: -.04em; }
-    p { color: #cbd5e1; line-height: 1.55; }
-    a { color: #7dd3fc; font-weight: 800; }
-  </style>
+  <title>${escapeHtml(title)} — DropQR</title>
+  <link rel="stylesheet" href="/assets/app.css?v=15">
 </head>
-<body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><p><a href="/upload">Créer un nouveau transfert</a></p></main></body>
+<body>
+  <div class="shell share-shell">
+    <main class="share-page card">
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <div class="page-code">SYSTEM / NOTICE</div>
+      <h1>${escapeHtml(title)}</h1>
+      <p class="lead">${escapeHtml(message)}</p>
+      <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
+      <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
+    </main>
+  </div>
+  <script src="/assets/site.js?v=9" defer></script>
+</body>
 </html>`;
 }
 
@@ -1153,6 +1252,11 @@ ensureStorage()
       console.log(`DropQR démarré sur http://${HOST}:${PORT}`);
       console.log(`Stockage: local-disk | Limite fichier app: ${MAX_FILE_SIZE_BYTES ? formatBytes(MAX_FILE_SIZE_BYTES) : 'aucune'} | TTL défaut: ${DEFAULT_TTL_MINUTES} min | TTL max: ${MAX_TTL_MINUTES} min`);
       if (PUBLIC_URL) console.log(`URL publique configurée: ${PUBLIC_URL}`);
+      if (DISCORD_BOT_TOKEN && DISCORD_INVITE_CHANNEL_ID) {
+        refreshDiscordContactInvite('démarrage');
+        setInterval(() => refreshDiscordContactInvite('rotation quotidienne'), DISCORD_INVITE_REFRESH_HOURS * 60 * 60 * 1000);
+        console.log(`Rotation du lien Discord activée: toutes les ${DISCORD_INVITE_REFRESH_HOURS} heures.`);
+      }
     });
   })
   .catch((error) => {
