@@ -385,6 +385,42 @@ check('route API inconnue en 404 JSON', unknownApi.status === 404 && (unknownApi
 const notFound = await request('/page-inconnue');
 check('page inconnue en 404 HTML', notFound.status === 404 && (notFound.headers.get('content-type') || '').includes('html'));
 
+const statsResponse = await request('/api/stats');
+const stats = await statsResponse.json();
+check(
+  'statistiques cohérentes',
+  statsResponse.status === 200 && Number.isFinite(stats.activeTransfers) && Number.isFinite(stats.activeBytes),
+  JSON.stringify(stats)
+);
+const notify = await request('/api/notify/discord', { method: 'POST', body: { id: 'inconnu' } });
+const notifyBody = await notify.json().catch(() => ({}));
+check(
+  'notification Discord refusée proprement sans configuration',
+  notify.status >= 400 && typeof notifyBody.error === 'string',
+  `${notify.status} ${notifyBody.error || ''}`
+);
+// Sans CRON_SECRET, la purge doit rester inaccessible depuis l'extérieur…
+const purgePublic = await app.handleRequest(new Request('https://dropqr.example/api/purge', { method: 'POST' }), {});
+check('purge refusée depuis l’extérieur sans jeton', purgePublic.status === 503 || purgePublic.status === 403, String(purgePublic.status));
+// …mais elle peut être appelée depuis le poste de développement.
+const purgeLocal = await request('/api/purge', { method: 'POST' });
+check('purge autorisée en local (développement)', purgeLocal.status === 200, String(purgeLocal.status));
+// Avec un jeton configuré, seul le bon jeton passe.
+const guarded = (await import('../lib/app.mjs')).createApp({ env: { ...process.env, CRON_SECRET: 'jeton-secret' } });
+const sansJeton = await guarded.handleRequest(new Request('https://dropqr.example/api/purge', { method: 'POST' }), {});
+const mauvaisJeton = await guarded.handleRequest(
+  new Request('https://dropqr.example/api/purge', { method: 'POST', headers: { 'x-cron-secret': 'faux' } }),
+  {}
+);
+check('purge avec jeton : refus sans en-tête', sansJeton.status === 403, String(sansJeton.status));
+check('purge avec jeton : refus si le jeton est faux', mauvaisJeton.status === 403, String(mauvaisJeton.status));
+const robots = await request('/robots.txt');
+check('robots.txt servi', robots.status === 200, String(robots.status));
+const favicon = await request('/assets/favicon.svg');
+check('favicon servi', favicon.status === 200, String(favicon.status));
+const racineInterdite = await request('/package.json');
+check('fichiers sensibles non exposés', racineInterdite.status === 404, String(racineInterdite.status));
+
 /* ------------- 11. Cohérence entre les scripts et le HTML ----------------- */
 
 group('11. Câblage des widgets (scripts ↔ pages)');
@@ -544,6 +580,41 @@ const incomplete = execFileSync(
   { encoding: 'utf8' }
 );
 const incompleteResult = JSON.parse(incomplete.trim().split('\n').pop());
+
+// Le cadrage (iframe) est strict en production, souple en local pour l'aperçu.
+const framing = JSON.parse(
+  execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `const { createApp } = await import('${path.join(process.cwd(), 'lib/app.mjs')}');
+       const app = createApp();
+       const response = await app.handleRequest(new Request('http://localhost/'), {});
+       console.log(JSON.stringify({
+         csp: response.headers.get('content-security-policy'),
+         xfo: response.headers.get('x-frame-options')
+       }));
+       process.exit(0);`
+    ],
+    { encoding: 'utf8', env: { ...process.env, NETLIFY: 'true', DROPQR_META: 'local' } }
+  ).trim().split('\n').pop()
+);
+check('production : cadrage limité au site lui-même', /frame-ancestors 'self'($|;)/.test(framing.csp), framing.csp.split('; ').pop());
+check('production : X-Frame-Options présent', framing.xfo === 'SAMEORIGIN', String(framing.xfo));
+
+const previewHome = await request('/');
+const previewCsp = previewHome.headers.get('content-security-policy') || '';
+// Le contexte Blobs nous fait passer pour Netlify : le cadrage redevient strict.
+check(
+  TARGET_BLOBS
+    ? 'contexte Netlify : cadrage strict'
+    : 'local : aperçu autorisé à encadrer le site, et rien d’autre',
+  previewCsp.includes(
+    TARGET_BLOBS ? "frame-ancestors 'self'" : "frame-ancestors 'self' https://*.e2b.app"
+  ),
+  previewCsp.split('; ').pop()
+);
 check('métadonnées indisponibles : refus explicite (503)', incompleteResult.status === 503, String(incompleteResult.status));
 check(
   'le message indique la marche à suivre',
