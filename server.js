@@ -21,11 +21,11 @@ const DISCORD_WEBHOOK_URL = (process.env.DISCORD_WEBHOOK_URL || '').trim();
 const DISCORD_USERNAME = process.env.DISCORD_USERNAME || 'DropQR';
 const DISCORD_MENTION = (process.env.DISCORD_MENTION || '').trim();
 const DISCORD_NOTIFY = process.env.DISCORD_NOTIFY !== 'false';
-const DEFAULT_TTL_MINUTES = Number(process.env.DEFAULT_TTL_MINUTES || 15);
-const MAX_TTL_MINUTES = Number(process.env.MAX_TTL_MINUTES || 1440); // 24h par défaut
+const DEFAULT_TTL_MINUTES = parsePositiveEnvNumber('DEFAULT_TTL_MINUTES', 15);
+const MAX_TTL_MINUTES = Math.max(DEFAULT_TTL_MINUTES, parsePositiveEnvNumber('MAX_TTL_MINUTES', 1440)); // 24h par défaut
 const MAX_FILE_SIZE_BYTES = parseMaxFileSize(); // null = pas de limite imposée par l'app
-const RECOMMENDED_CHUNK_SIZE_BYTES = Math.max(1024 * 1024, Number(process.env.CHUNK_SIZE_MB || 16) * 1024 * 1024);
-const UPLOAD_CONCURRENCY = Math.min(8, Math.max(1, Number(process.env.UPLOAD_CONCURRENCY || 5)));
+const RECOMMENDED_CHUNK_SIZE_BYTES = Math.max(1024 * 1024, parsePositiveEnvNumber('CHUNK_SIZE_MB', 16) * 1024 * 1024);
+const UPLOAD_CONCURRENCY = Math.min(8, Math.max(1, Math.floor(parsePositiveEnvNumber('UPLOAD_CONCURRENCY', 5))));
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STORAGE_DIR = path.join(__dirname, 'storage');
@@ -34,8 +34,15 @@ const CHUNKS_DIR = path.join(STORAGE_DIR, 'chunks');
 const DB_PATH = path.join(STORAGE_DIR, 'db.json');
 const discordDeleteTimers = new Map();
 const MAX_TIMEOUT_MS = 2_147_000_000;
+const MAX_CHUNK_SIZE_BYTES = 256 * 1024 * 1024;
 
 let db = { transfers: {} };
+let dbWriteQueue = Promise.resolve();
+
+function parsePositiveEnvNumber(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function parseMaxFileSize() {
   // Par défaut, DropQR accepte jusqu'à 10 Go par transfert.
@@ -114,6 +121,14 @@ function cleanOriginalName(name) {
   return base.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180) || 'fichier';
 }
 
+function storedFilePath(storedName) {
+  const name = String(storedName || '');
+  if (!/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9._-]+)?$/.test(name)) return null;
+  const root = path.resolve(FILES_DIR);
+  const filePath = path.resolve(root, name);
+  return filePath.startsWith(`${root}${path.sep}`) ? filePath : null;
+}
+
 function formatBytes(bytes) {
   const value = Number(bytes || 0);
   if (value < 1024) return `${value} o`;
@@ -163,8 +178,17 @@ function isSandboxPreview(req) {
 }
 
 function transferStore() {
-  if (!db.transfers) db.transfers = {};
+  if (!db.transfers || typeof db.transfers !== 'object' || Array.isArray(db.transfers)) db.transfers = {};
   return db.transfers;
+}
+
+function getTransferById(id) {
+  const key = String(id || '');
+  const transfers = transferStore();
+  return /^[a-zA-Z0-9_-]{8,160}$/.test(key)
+    && Object.prototype.hasOwnProperty.call(transfers, key)
+    ? transfers[key]
+    : null;
 }
 
 function parseTtlMinutes(value) {
@@ -384,12 +408,11 @@ async function cleanupStaleChunks() {
   const maxAgeMs = 2 * 60 * 60 * 1000;
   const entries = await fsp.readdir(CHUNKS_DIR, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dirPath = path.join(CHUNKS_DIR, entry.name);
-    const stat = await fsp.stat(dirPath).catch(() => null);
-    if (!stat || now() - stat.mtimeMs > maxAgeMs) {
-      await fsp.rm(dirPath, { recursive: true, force: true }).catch(() => {});
-    }
+    const entryPath = path.join(CHUNKS_DIR, entry.name);
+    const stat = await fsp.stat(entryPath).catch(() => null);
+    if (!stat || now() - stat.mtimeMs <= maxAgeMs) continue;
+    // Les fichiers déposés par Multer avant une erreur doivent aussi être nettoyés.
+    await fsp.rm(entryPath, { recursive: entry.isDirectory(), force: true }).catch(() => {});
   }
 }
 
@@ -418,11 +441,15 @@ async function ensureStorage() {
   }
 }
 
-async function saveDb() {
-  await fsp.mkdir(STORAGE_DIR, { recursive: true });
-  const tmp = `${DB_PATH}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(db, null, 2));
-  await fsp.rename(tmp, DB_PATH);
+function saveDb() {
+  // Une seule écriture à la fois: plusieurs uploads peuvent terminer en parallèle.
+  dbWriteQueue = dbWriteQueue.catch(() => {}).then(async () => {
+    await fsp.mkdir(STORAGE_DIR, { recursive: true });
+    const tmp = `${DB_PATH}.${process.pid}.tmp`;
+    await fsp.writeFile(tmp, JSON.stringify(db, null, 2));
+    await fsp.rename(tmp, DB_PATH);
+  });
+  return dbWriteQueue;
 }
 
 async function deleteTransfer(id, reason = 'cleanup') {
@@ -432,8 +459,8 @@ async function deleteTransfer(id, reason = 'cleanup') {
   delete transfers[id];
   await saveDb().catch((error) => console.error('Erreur sauvegarde DB:', error));
 
-  const filePath = path.join(FILES_DIR, meta.storedName || '');
-  await fsp.unlink(filePath).catch((error) => {
+  const filePath = storedFilePath(meta.storedName);
+  if (filePath) await fsp.unlink(filePath).catch((error) => {
     if (error.code !== 'ENOENT') console.error(`Erreur suppression fichier ${id}:`, error);
   });
 
@@ -481,7 +508,7 @@ const multerConfig = {
       cb(null, `${id}${ext || '.bin'}`);
     }
   }),
-  limits: { files: 1 }
+  limits: { files: 1, fields: 16, fieldSize: 64 * 1024 }
 };
 
 if (MAX_FILE_SIZE_BYTES) {
@@ -505,7 +532,43 @@ const chunkUpload = multer({
       cb(null, `${makeId(16)}${ext || '.part'}`);
     }
   }),
-  limits: { files: 1 }
+  limits: { files: 1, fields: 16, fieldSize: 64 * 1024, fileSize: Math.min(MAX_FILE_SIZE_BYTES || MAX_CHUNK_SIZE_BYTES, MAX_CHUNK_SIZE_BYTES) }
+});
+
+function createRateLimiter({ windowMs, max, message }) {
+  const buckets = new Map();
+  return (req, res, next) => {
+    const key = req.ip || req.socket.remoteAddress || 'unknown';
+    const timestamp = now();
+    let bucket = buckets.get(key);
+    if (!bucket || timestamp - bucket.startedAt >= windowMs) {
+      bucket = { startedAt: timestamp, count: 0 };
+      buckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > max) {
+      res.setHeader('Retry-After', String(Math.ceil((windowMs - (timestamp - bucket.startedAt)) / 1000)));
+      return res.status(429).json({ error: message });
+    }
+    // Évite de garder indéfiniment les IP inactives en mémoire.
+    if (buckets.size > 5000) {
+      for (const [entryKey, entry] of buckets) {
+        if (timestamp - entry.startedAt >= windowMs) buckets.delete(entryKey);
+      }
+    }
+    return next();
+  };
+}
+
+const apiRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: 'Trop de requêtes. Réessaie dans une minute.'
+});
+const uploadRateLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 2000,
+  message: 'Trop de tentatives d’upload depuis cette adresse. Réessaie plus tard.'
 });
 
 // Pas de cache pendant le développement: ça évite le problème "rien n'a changé" après refresh.
@@ -513,11 +576,16 @@ app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
   next();
 });
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use('/api', apiRateLimiter);
+app.use('/api/transfers', uploadRateLimiter);
 app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), {
   etag: false,
   lastModified: false,
@@ -641,9 +709,11 @@ async function assembleChunkUpload(req, uploadId) {
     const meta = JSON.parse(await fsp.readFile(metaPath, 'utf8'));
     const totalChunks = Number(meta.totalChunks);
     const totalSize = Number(meta.totalSize);
-    if (!Number.isInteger(totalChunks) || totalChunks < 1) {
-      const error = new Error('Métadonnées d’upload invalides.');
-      error.status = 400;
+    if (!Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > 20000
+      || !Number.isFinite(totalSize) || totalSize < 0
+      || (MAX_FILE_SIZE_BYTES && totalSize > MAX_FILE_SIZE_BYTES)) {
+      const error = new Error('Métadonnées d’upload invalides ou fichier trop volumineux.');
+      error.status = MAX_FILE_SIZE_BYTES && totalSize > MAX_FILE_SIZE_BYTES ? 413 : 400;
       throw error;
     }
 
@@ -730,16 +800,34 @@ async function uploadChunk(req, res, next) {
 
     const chunkDir = path.join(CHUNKS_DIR, uploadId);
     await fsp.mkdir(chunkDir, { recursive: true });
-    await fsp.writeFile(path.join(chunkDir, 'meta.json'), JSON.stringify({
-      uploadId,
-      originalName,
-      mimeType,
-      totalSize,
-      totalChunks,
-      ttlMinutes,
-      deleteAfterDownload,
-      updatedAt: now()
-    }, null, 2));
+    const metaPath = path.join(chunkDir, 'meta.json');
+    const incomingMeta = {
+      uploadId, originalName, mimeType, totalSize, totalChunks, ttlMinutes, deleteAfterDownload
+    };
+    try {
+      const existingMeta = JSON.parse(await fsp.readFile(metaPath, 'utf8'));
+      const sameUpload = existingMeta.uploadId === incomingMeta.uploadId
+        && existingMeta.totalSize === incomingMeta.totalSize
+        && existingMeta.totalChunks === incomingMeta.totalChunks;
+      if (!sameUpload) {
+        await fsp.unlink(req.file.path).catch(() => {});
+        return res.status(409).json({ error: 'Les métadonnées de cet upload ne correspondent pas.' });
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      try {
+        await fsp.writeFile(metaPath, JSON.stringify({ ...incomingMeta, updatedAt: now() }, null, 2), { flag: 'wx' });
+      } catch (writeError) {
+        if (writeError.code !== 'EEXIST') throw writeError;
+        const existingMeta = JSON.parse(await fsp.readFile(metaPath, 'utf8'));
+        if (existingMeta.uploadId !== incomingMeta.uploadId
+          || existingMeta.totalSize !== incomingMeta.totalSize
+          || existingMeta.totalChunks !== incomingMeta.totalChunks) {
+          await fsp.unlink(req.file.path).catch(() => {});
+          return res.status(409).json({ error: 'Les métadonnées de cet upload ne correspondent pas.' });
+        }
+      }
+    }
 
     const targetPath = path.join(chunkDir, `${chunkIndex}.part`);
     await fsp.rm(targetPath, { force: true }).catch(() => {});
@@ -803,7 +891,7 @@ app.get('/api/codes/:code', async (req, res) => {
 });
 
 app.get('/api/transfers/:id', async (req, res) => {
-  const meta = transferStore()[req.params.id];
+  const meta = getTransferById(req.params.id);
   if (!meta) return res.status(404).json({ error: 'Transfert introuvable.' });
   if (Number(meta.expiresAt) <= now()) {
     await deleteTransfer(req.params.id, 'expiration-api');
@@ -814,7 +902,7 @@ app.get('/api/transfers/:id', async (req, res) => {
 });
 
 app.delete('/api/transfers/:id', async (req, res) => {
-  const meta = transferStore()[req.params.id];
+  const meta = getTransferById(req.params.id);
   if (!meta) return res.status(404).json({ error: 'Transfert introuvable.' });
 
   const providedKey = req.get('x-delete-key') || req.query.deleteKey || req.body.deleteKey;
@@ -846,7 +934,7 @@ async function showSharePageByCode(req, res) {
 
 async function showSharePage(req, res) {
   const id = req.params.id;
-  const meta = transferStore()[id];
+  const meta = getTransferById(id);
   if (!meta) {
     return res.status(404).send(renderMessagePage('Transfert introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
   }
@@ -859,7 +947,7 @@ async function showSharePage(req, res) {
 
 app.get('/view/:id', async (req, res) => {
   const id = req.params.id;
-  const meta = transferStore()[id];
+  const meta = getTransferById(id);
   if (!meta) {
     return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
   }
@@ -867,9 +955,12 @@ app.get('/view/:id', async (req, res) => {
     await deleteTransfer(id, 'expiration-preview');
     return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
   }
+  if (!isVideoMime(meta.mimeType)) {
+    return res.status(415).send(renderMessagePage('Aperçu indisponible', 'Seules les vidéos peuvent être lues directement dans le navigateur. Utilise le bouton de téléchargement.'));
+  }
 
-  const filePath = path.join(FILES_DIR, meta.storedName);
-  if (!fs.existsSync(filePath)) {
+  const filePath = storedFilePath(meta.storedName);
+  if (!filePath || !fs.existsSync(filePath)) {
     await deleteTransfer(id, 'fichier-manquant-preview');
     return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
   }
@@ -886,8 +977,17 @@ app.get('/view/:id', async (req, res) => {
   if (range) {
     const match = String(range).match(/bytes=(\d*)-(\d*)/);
     if (!match) return res.status(416).setHeader('Content-Range', `bytes */${total}`).end();
-    let start = match[1] ? Number(match[1]) : 0;
-    let end = match[2] ? Number(match[2]) : total - 1;
+    let start;
+    let end;
+    if (!match[1] && match[2]) {
+      const suffixLength = Number(match[2]);
+      if (!Number.isFinite(suffixLength) || suffixLength <= 0) return res.status(416).setHeader('Content-Range', `bytes */${total}`).end();
+      start = Math.max(total - suffixLength, 0);
+      end = total - 1;
+    } else {
+      start = match[1] ? Number(match[1]) : 0;
+      end = match[2] ? Number(match[2]) : total - 1;
+    }
     if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= total) {
       return res.status(416).setHeader('Content-Range', `bytes */${total}`).end();
     }
@@ -905,7 +1005,7 @@ app.get('/view/:id', async (req, res) => {
 
 app.get('/download/:id', async (req, res) => {
   const id = req.params.id;
-  const meta = transferStore()[id];
+  const meta = getTransferById(id);
   if (!meta) {
     return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le lien est incorrect, expiré ou le fichier a déjà été supprimé.'));
   }
@@ -914,8 +1014,8 @@ app.get('/download/:id', async (req, res) => {
     return res.status(410).send(renderMessagePage('Lien expiré', 'Ce fichier a été supprimé automatiquement car sa durée de vie est dépassée.'));
   }
 
-  const filePath = path.join(FILES_DIR, meta.storedName);
-  if (!fs.existsSync(filePath)) {
+  const filePath = storedFilePath(meta.storedName);
+  if (!filePath || !fs.existsSync(filePath)) {
     await deleteTransfer(id, 'fichier-manquant');
     return res.status(404).send(renderMessagePage('Fichier introuvable', 'Le fichier stocké est manquant. Le lien a été nettoyé.'));
   }
