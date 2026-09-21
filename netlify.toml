@@ -6,10 +6,30 @@
 [functions]
   node_bundler = "esbuild"
 
+# En-têtes de sécurité appliqués à tout le site, y compris aux fichiers
+# statiques servis par le CDN (qui ne passent pas par la fonction).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# En-têtes de sécurité appliqués à tout le site, y compris aux fichiers
+# statiques servis par le CDN (qui ne passent pas par la fonction).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
 
 [[headers]]
   for = "/img/*"

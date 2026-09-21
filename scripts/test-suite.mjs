@@ -465,6 +465,8 @@ check(
 
 group('14. Couverture des routes pour Netlify');
 const netlifyToml = await fsp.readFile(path.join(process.cwd(), 'netlify.toml'), 'utf8');
+check('en-têtes de sécurité appliqués à tout le site', /for\s*=\s*"\/\*"[\s\S]{0,200}nosniff/.test(netlifyToml));
+check('version de Node épinglée', /^\s*2[02]\s*$/.test(await fsp.readFile(path.join(process.cwd(), '.nvmrc'), 'utf8').catch(() => '')));
 check('publication du dossier public/', /publish\s*=\s*"public"/.test(netlifyToml));
 check('fonctions prises dans netlify/functions', /functions\s*=\s*"netlify\/functions"/.test(netlifyToml));
 check('mise en cache longue des ressources', (netlifyToml.match(/immutable/g) || []).length >= 2);
@@ -511,9 +513,38 @@ for (const html of Object.values(contents)) {
 check('aucun fichier référencé manquant (images, styles, scripts)', missingAssets.length === 0, [...new Set(missingAssets)].join(', '));
 check('aucun lien interne menant à une page non desservie', brokenLinks.length === 0, [...new Set(brokenLinks)].join(', '));
 
-/* ------------------- 15. Qualité du rendu (mise en page) ------------------ */
+/* --------------- 15. Configuration incomplète (cas Netlify) --------------- */
 
-group('15. Qualité du rendu');
+group('15. Configuration incomplète');
+const { execFileSync } = await import('node:child_process');
+const incomplete = execFileSync(
+  process.execPath,
+  [
+    '--input-type=module',
+    '-e',
+    `delete process.env.NETLIFY_BLOBS_CONTEXT; // comme un Netlify sans contexte Blobs
+     process.env.DROPQR_META = 'blobs';
+     process.env.DROPQR_STORAGE = 'local';
+     process.env.DROPQR_STORAGE_DIR = '${path.join(ROOT, 'incomplet')}';
+     const { createApp } = await import('${path.join(process.cwd(), 'lib/app.mjs')}');
+     const app = createApp();
+     const response = await app.handleRequest(new Request('http://localhost/api/health'), {});
+     console.log(JSON.stringify({ status: response.status, body: await response.json() }));
+     process.exit(0); // les connexions HTTP gardées ouvertes empêchent la sortie`
+  ],
+  { encoding: 'utf8' }
+);
+const incompleteResult = JSON.parse(incomplete.trim().split('\n').pop());
+check('métadonnées indisponibles : refus explicite (503)', incompleteResult.status === 503, String(incompleteResult.status));
+check(
+  'le message indique la marche à suivre',
+  /Netlify Blobs|DROPQR_META/.test(incompleteResult.body.error || ''),
+  String(incompleteResult.body.error || '').slice(0, 80)
+);
+
+/* ------------------- 16. Qualité du rendu (mise en page) ------------------ */
+
+group('16. Qualité du rendu');
 for (const route of [...pages, '/offline']) {
   if (!contents[route]) contents[route] = await (await request(route)).text();
   const html = contents[route];
