@@ -435,6 +435,15 @@ const undefinedProperties = [...usedProperties].filter(
 check('aucune variable CSS non définie', undefinedProperties.length === 0, undefinedProperties.join(', '));
 
 const strayHexColors = [...css.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].filter((match) => ![4, 5, 7, 9].includes(match[0].length));
+// `hidden` est écrasé par toute règle de classe qui fixe un `display` :
+// la feuille de style doit donc le rétablir explicitement.
+check('attribut hidden réellement masquant', /\[hidden\][^{]*{[^}]*display:\s*none/.test(css));
+const hiddenElements = [...Object.values(contents).join('\n').matchAll(/class="([^"]+)"[^>]*\shidden/g)].map((match) => match[1].split(' ')[0]);
+check(
+  'aucun bloc masqué au chargement dépourvu de la règle de repli',
+  hiddenElements.length === 0 || /\[hidden\]/.test(css),
+  `${hiddenElements.length} élément(s) : ${[...new Set(hiddenElements)].join(', ')}`
+);
 check('aucune couleur hexadécimale invalide', strayHexColors.length === 0, strayHexColors.slice(0, 3).map((match) => match[0]).join(', '));
 check('aucune déclaration vide ou erronée', !/\bundefined\b|\bNaN\b/.test(css));
 check('aucun emoji dans la feuille de style', !/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(css));

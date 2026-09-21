@@ -328,6 +328,15 @@
       return;
     }
 
+    // Filet de sécurité : si rien n'a été révélé au bout d'une seconde et
+    // demie, c'est que l'observateur ne fonctionne pas. On affiche tout plutôt
+    // que de laisser une page vide.
+    window.setTimeout(() => {
+      if (!document.querySelector('[data-reveal].is-visible')) {
+        targets.forEach((target) => target.classList.add('is-visible'));
+      }
+    }, 1500);
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {

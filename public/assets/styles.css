@@ -647,6 +647,35 @@ pre {
   align-items: center;
 }
 
+/* Par défaut, un enfant de grille ou de conteneur flex refuse de descendre
+   sous la largeur de son contenu (`min-width: auto`). Un texte insécable
+   (badge, code, nom de fichier) élargit alors la colonne au-delà de l'écran,
+   et comme la page masque le débordement, le texte est rogné en silence. */
+.hero-inner > *,
+.help-main,
+.help-side,
+.panel,
+.panel-head,
+.panel-actions,
+.steps > *,
+.step,
+.table-wrap,
+.code-block,
+.shell > *,
+.widget-grid > *,
+.steps > *,
+.layout-2col > *,
+.layout-help > *,
+.result-grid > *,
+.progress-card > *,
+.field-row > *,
+.split > *,
+.panel-empty > *,
+.footer-inner > *,
+.footer-cols > * {
+  min-width: 0;
+}
+
 .hero-copy h1 em {
   font-style: italic;
   color: var(--copper);
@@ -791,7 +820,7 @@ pre {
 }
 
 #qrHolder svg,
-.share-qr svg {
+.share-qr .qr-frame svg {
   width: 100%;
   max-width: 240px;
   height: auto;
@@ -2087,6 +2116,7 @@ input:focus {
 }
 
 .code-block {
+  max-width: 100%;
   background: #10201c;
   color: #e8f1ec;
   border-radius: var(--radius-sm);
@@ -2103,6 +2133,7 @@ input:focus {
 }
 
 .table-wrap {
+  max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -2424,6 +2455,44 @@ input:focus {
   transform: perspective(900px) rotateX(calc(var(--rx, 0) * 1deg)) rotateY(calc(var(--ry, 0) * 1deg));
 }
 
+/* -------------------------------- correctifs ------------------------------ */
+
+/* Rien ne doit pouvoir dépasser la largeur disponible : images, vidéos, SVG,
+   champs de saisie et éléments longs (codes, URL, noms de fichiers). */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+/* Placé en fin de feuille de style : l'emporte donc à spécificité égale sur
+   toute règle du type « .conteneur svg » qui viserait aussi un pictogramme. */
+svg.icon {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+code,
+.kv-value,
+.share-url {
+  overflow-wrap: anywhere;
+}
+
+/* L'attribut `hidden` doit l'emporter sur les classes qui définissent un
+   `display` : sans cela, les blocs masqués (ligne de fichier, aperçu,
+   tableau de bord vide) restent visibles. */
+[hidden] {
+  display: none !important;
+}
+
 /* ------------------------------ responsive ------------------------------- */
 
 @media (max-width: 1080px) {
@@ -2480,6 +2549,26 @@ input:focus {
 @media (max-width: 720px) {
   body {
     font-size: 16px;
+  }
+
+  /* Une rangée de boutons ou d'informations passe à la ligne plutôt que de
+     pousser la page au-delà de l'écran. */
+  .panel-head,
+  .panel-actions,
+  .stat-row,
+  .row-actions {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .panel-head {
+    gap: 0.7rem;
+  }
+
+  /* Sur un écran étroit, un texte insécable déborderait forcément. */
+  .chip {
+    white-space: normal;
+    max-width: 100%;
   }
 
   .nav {

@@ -183,9 +183,10 @@ défilant, compteurs. Tout se désactive si le système demande de réduire les 
 ## Tests
 
 ```bash
-npm run check      # analyse syntaxique des 18 fichiers source
-npm test           # 178 vérifications, jouées trois fois (voir ci-dessous)
+npm run check      # analyse syntaxique des 19 fichiers source
+npm test           # 184 vérifications, jouées trois fois (voir ci-dessous)
 npm run test:s3    # nécessite : npm install --no-save s3rver
+npm run test:layout   # nécessite : npm install --no-save puppeteer-core @sparticuz/chromium
 ```
 
 `npm test` ne demande aucune dépendance supplémentaire. La même suite est rejouée trois fois :
@@ -206,6 +207,14 @@ fonctionné en production.
 fois : sur le serveur Node, puis sur la fonction Netlify avec Blobs (configuration réelle du
 déploiement). Les signatures pré-signées sont revérifiées depuis la spécification SigV4 d'AWS, car un
 faux serveur est trop permissif.
+
+`npm run test:layout` ouvre les cinq pages dans un vrai navigateur sans interface, à trois largeurs
+(téléphone 390 px, tablette 768 px, ordinateur 1440 px), et vérifie ce qu'aucun test de code ne peut
+voir : aucun débordement horizontal, aucun texte rogné, aucun bloc resté invisible parce qu'une
+animation ne s'est pas déclenchée, images chargées et dimensionnées, pictogrammes à la bonne taille,
+bascule de thème fonctionnelle, aucune erreur JavaScript. C'est ce contrôle qui a mis au jour la ligne
+de fichier vide sous la zone de dépôt (attribut `hidden` écrasé par une règle `display`) et le texte
+coupé sur téléphone (enfants de grille à `min-width: auto`).
 
 Ce qui est contrôlé : rendu des six pages, absence totale d'emoji et de script en ligne, CSP et en-têtes
 de sécurité, génération de 5000 codes, cycle complet (création, envoi, téléchargement comparé octet par
@@ -256,5 +265,8 @@ netlify/functions/
   purge.mjs       tâche planifiée
 public/           CSS, JavaScript, images, favicon
 server.js         serveur Node autonome (même routeur)
-scripts/          suites de tests
+scripts/
+  test-suite.mjs  suite principale (3 cibles)
+  test-s3.mjs     chaîne stockage objet
+  test-layout.mjs contrôle visuel dans un navigateur
 ```
