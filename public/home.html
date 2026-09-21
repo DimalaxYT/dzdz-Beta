@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DropQR — envoyer et recevoir</title>
-  <link rel="stylesheet" href="/assets/app.css?v=11">
+  <title>DropQR — transfert temporaire</title>
+  <link rel="stylesheet" href="/assets/app.css?v=12">
 </head>
-<body>
+<body class="page-home">
   <div class="shell">
     <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=11" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
       <div class="nav-links">
         <a class="active" href="/">Accueil</a>
         <a href="/upload">Envoyer</a>
@@ -19,66 +19,75 @@
       </div>
     </nav>
 
-    <header class="hero clean-hero landing-hero">
-      <div class="hero-copy">
-        <div class="eyebrow">Fichiers et vidéos jusqu’à 10 Go</div>
-        <h1>Transfère vite. Reçois avec un code.</h1>
-        <p class="lead">DropQR envoie tes fichiers par morceaux parallèles, génère un code court et poste le QR dans Discord. Simple pour toi, clair pour la personne qui reçoit.</p>
-        <div class="actions">
-          <a class="btn primary" href="/upload">Envoyer maintenant</a>
-          <a class="btn" href="/receive">Recevoir un fichier</a>
-        </div>
-        <div class="trust-row" aria-label="Résumé des capacités">
-          <span>10 Go max</span>
-          <span>Upload parallèle</span>
-          <span>Vidéos lisibles</span>
-          <span>Discord auto</span>
-        </div>
-      </div>
-
-      <aside class="product-card" aria-label="Aperçu DropQR">
-        <div class="product-top">
-          <span class="status-dot"></span>
-          <span>Transfert prêt</span>
-        </div>
-        <div class="code-display">TD4CJGT</div>
-        <div class="mock-file">
-          <div class="mock-icon"></div>
-          <div>
-            <strong>vacances-video.mp4</strong>
-            <span>1.08 Go · expire dans 15 min</span>
+    <main>
+      <header class="hero">
+        <div class="hero-main">
+          <div class="eyebrow">Transfert temporaire / QR / sans compte</div>
+          <h1>Le fichier passe. Le lien disparaît.</h1>
+          <p class="lead">DropQR crée un passage court entre deux appareils. Tu déposes, tu partages un code, puis le fichier est supprimé après téléchargement ou expiration.</p>
+          <div class="actions">
+            <a class="btn primary" href="/upload">Déposer un fichier</a>
+            <a class="btn" href="/receive">Entrer un code</a>
           </div>
         </div>
-        <div class="mock-progress"><span style="width: 76%"></span></div>
-        <div class="product-actions">
-          <span>QR envoyé sur Discord</span>
-          <span>Message supprimé à expiration</span>
-        </div>
-      </aside>
-    </header>
 
-    <section class="feature-grid" aria-label="Fonctionnalités">
-      <article class="card feature-card">
-        <div class="pill">Rapide</div>
-        <h3>Envoi parallèle</h3>
-        <p>Les gros fichiers sont découpés et envoyés sur plusieurs flux pour mieux utiliser ta connexion.</p>
-      </article>
-      <article class="card feature-card">
-        <div class="pill">Recevoir</div>
-        <h3>Code court + QR</h3>
-        <p>Le destinataire entre un code ou scanne le QR pour arriver sur une page claire de réception.</p>
-      </article>
-      <article class="card feature-card">
-        <div class="pill">Vidéo</div>
-        <h3>Lecture intégrée</h3>
-        <p>Les vidéos peuvent être lues directement dans le navigateur avant téléchargement.</p>
-      </article>
-    </section>
+        <aside class="signal-card" data-parallax data-speed="-.1" aria-label="Aperçu d'un transfert">
+          <div class="signal-head"><span>Canal temporaire</span><span class="signal-state">Opérationnel</span></div>
+          <div class="signal-code">Q7R-4M2</div>
+          <div class="signal-file">
+            <span class="file-mark" aria-hidden="true"></span>
+            <div><strong>archive-projet.zip</strong><span>840 Mo / expire dans 15 min</span></div>
+          </div>
+          <div class="signal-meter" aria-label="Progression 76 pour cent"><span></span></div>
+          <div class="signal-foot"><span>QR envoyé</span><span>Nettoyage armé</span></div>
+          <div class="qr-dummy" aria-hidden="true"></div>
+        </aside>
+      </header>
+
+      <div class="home-rail" aria-label="Caractéristiques">
+        <span>Jusqu'à 10 Go</span><span>Morceaux parallèles</span><span>Vidéos lisibles</span><span>Suppression automatique</span><span>Webhooks Discord</span>
+      </div>
+
+      <section class="stat-grid" aria-label="Résumé du service">
+        <article class="stat-card"><strong>01</strong><span>Un code court pour retrouver le transfert.</span></article>
+        <article class="stat-card"><strong>15 min</strong><span>Une durée courte par défaut, modifiable à l'envoi.</span></article>
+        <article class="stat-card"><strong>0 trace</strong><span>Le fichier et son lien ne sont pas conservés indéfiniment.</span></article>
+      </section>
+
+      <div class="section-head">
+        <div><div class="section-label">Le système</div><h2>Un outil direct, pas un espace de stockage.</h2></div>
+        <p>Chaque écran a une action claire. Le destinataire n'a pas besoin de compte ni d'installation.</p>
+      </div>
+
+      <section class="feature-grid" aria-label="Fonctionnalités">
+        <article class="feature-card">
+          <div class="feature-index"><span>01 / ENVOYER</span></div>
+          <h3>Un upload qui avance vraiment</h3>
+          <p>Les fichiers lourds sont découpés en morceaux et envoyés en parallèle avec une progression visible.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-index"><span>02 / PARTAGER</span></div>
+          <h3>Un code lisible en un coup d'œil</h3>
+          <p>Le QR et le code court ouvrent la même page de réception. Partage uniquement ce dont tu as besoin.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-index"><span>03 / OUBLIER</span></div>
+          <h3>Une fin prévue dès le départ</h3>
+          <p>Le transfert disparaît à expiration, après le premier téléchargement ou depuis ton tableau de bord.</p>
+        </article>
+      </section>
+
+      <section class="info-strip">
+        <h2>La preview n'est pas le réseau local.</h2>
+        <p>Dans Arena, un QR scanné par un téléphone peut rencontrer la protection de la plateforme. Pour un vrai test mobile, utilise l'URL Render publique ou lance DropQR sur ton Wi-Fi local.</p>
+      </section>
+    </main>
 
     <footer>
-      <span><strong>DropQR</strong> — fichier temporaire, code court, QR code.</span>
-      <span><a href="/api/health">Vérifier le backend</a></span>
+      <span><strong>DropQR</strong> / fichiers temporaires / interface sans compte</span>
+      <span><a href="/api/health">État du backend</a></span>
     </footer>
   </div>
+  <script src="/assets/site.js?v=2" defer></script>
 </body>
 </html>

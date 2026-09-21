@@ -1082,45 +1082,32 @@ function renderSharePage(req, meta) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Télécharger ${escapeHtml(meta.originalName)} · DropQR</title>
-  <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 12% 8%, rgba(103,232,249,.24), transparent 30%), radial-gradient(circle at 86% 0%, rgba(167,139,250,.25), transparent 28%), #050816; color: #f8fafc; padding: 22px; }
-    main { width: min(680px, 100%); background: rgba(15, 23, 42, .86); border: 1px solid rgba(148, 163, 184, .22); border-radius: 34px; padding: clamp(22px, 5vw, 34px); box-shadow: 0 24px 80px rgba(0, 0, 0, .38); }
-    .brand { display: inline-flex; align-items: center; gap: 10px; color: #cffafe; font-weight: 950; }
-    .brand span:first-child { width: 38px; height: 38px; border-radius: 13px; display: grid; place-items: center; overflow: hidden; }
-    .brand img { width: 38px; height: 38px; display: block; }
-    h1 { margin: 20px 0 10px; font-size: clamp(34px, 8vw, 58px); line-height: .92; letter-spacing: -.07em; }
-    .lead { margin: 0 0 22px; color: #cbd5e1; line-height: 1.58; }
-    .file { margin: 20px 0; padding: 18px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.09); border-radius: 22px; word-break: break-word; }
-    .name { font-size: 22px; font-weight: 950; letter-spacing: -.035em; }
-    .meta { color: #cbd5e1; margin-top: 10px; display: grid; gap: 6px; }
-    a.button { display: inline-flex; justify-content: center; align-items: center; width: 100%; box-sizing: border-box; text-decoration: none; color: #06111f; background: linear-gradient(135deg, #67e8f9, #93c5fd 52%, #a78bfa); font-weight: 950; border-radius: 18px; padding: 17px 18px; margin-top: 8px; }
-    .small { color: #94a3b8; font-size: 14px; line-height: 1.55; margin-top: 18px; }
-    .warning { margin-top: 16px; color: #fde68a; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); border-radius: 18px; padding: 14px; line-height: 1.5; }
-    .video { width: 100%; margin: 8px 0 14px; border-radius: 18px; background: #020617; border: 1px solid rgba(148,163,184,.22); display: block; max-height: 70vh; }
-  </style>
+  <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
+  <link rel="stylesheet" href="/assets/app.css?v=12">
 </head>
 <body>
-  <main>
-    <div class="brand"><span><img src="/assets/logo.svg?v=5" alt=""></span><strong>DropQR</strong></div>
-    <h1>Fichier prêt à télécharger</h1>
-    <p class="lead">Ce lien est temporaire. Télécharge le fichier avant son expiration.</p>
-    <section class="file">
-      <div class="name">${escapeHtml(meta.originalName)}</div>
-      <div class="meta">
-        <span>Code: ${escapeHtml(meta.code || meta.id)}</span>
-        <span>Taille: ${escapeHtml(formatBytes(meta.size))}</span>
-        <span>Expire: ${escapeHtml(expiresAt)}</span>
-        <span>${meta.deleteAfterDownload ? 'Suppression automatique après le premier téléchargement.' : 'Suppression automatique à expiration.'}</span>
-      </div>
-    </section>
-    ${isVideoMime(meta.mimeType) ? `<video class="video" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
-    <a class="button" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
-    ${isSandboxPreview(req) ? '<div class="warning">Tu es sur une preview Arena/e2b. Si cette page a été ouverte depuis un téléphone via QR code, elle peut être bloquée par le token de sécurité de la plateforme. Sur un vrai déploiement ou en local avec PUBLIC_URL, le QR fonctionnera normalement.</div>' : ''}
-    <p class="small">Ne partage ce lien qu’avec les appareils/personnes autorisés. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
-  </main>
+  <div class="shell share-shell">
+    <main class="share-page card">
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <div class="page-code">PUBLIC / DOWNLOAD</div>
+      <h1>Le fichier est prêt.</h1>
+      <p class="lead">Ce passage est temporaire. Récupère le fichier avant son expiration.</p>
+      <section class="share-file">
+        <div class="name">${escapeHtml(meta.originalName)}</div>
+        <div class="share-meta">
+          <span>Code : ${escapeHtml(meta.code || meta.id)}</span>
+          <span>Taille : ${escapeHtml(formatBytes(meta.size))}</span>
+          <span>Expire : ${escapeHtml(expiresAt)}</span>
+          <span>${meta.deleteAfterDownload ? 'Suppression après le premier téléchargement.' : 'Suppression automatique à expiration.'}</span>
+        </div>
+      </section>
+      ${isVideoMime(meta.mimeType) ? `<video class="video-preview" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
+      <a class="btn primary share-download" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
+      ${isSandboxPreview(req) ? '<div class="warning" style="margin-top:16px">La preview Arena peut demander un token de sécurité à un téléphone externe. Utilise l’URL Render ou le réseau local pour un vrai scan.</div>' : ''}
+      <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
+    </main>
+  </div>
+  <script src="/assets/site.js?v=2" defer></script>
 </body>
 </html>`;
 }
@@ -1131,16 +1118,21 @@ function renderMessagePage(title, message) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)} · DropQR</title>
-  <style>
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #050816; color: #f8fafc; font-family: system-ui, -apple-system, Segoe UI, sans-serif; padding: 24px; }
-    main { max-width: 590px; background: #0f172a; border: 1px solid rgba(148,163,184,.22); border-radius: 26px; padding: 30px; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.32); }
-    h1 { margin-top: 0; letter-spacing: -.04em; }
-    p { color: #cbd5e1; line-height: 1.55; }
-    a { color: #7dd3fc; font-weight: 800; }
-  </style>
+  <title>${escapeHtml(title)} — DropQR</title>
+  <link rel="stylesheet" href="/assets/app.css?v=12">
 </head>
-<body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><p><a href="/upload">Créer un nouveau transfert</a></p></main></body>
+<body>
+  <div class="shell share-shell">
+    <main class="share-page card">
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <div class="page-code">SYSTEM / NOTICE</div>
+      <h1>${escapeHtml(title)}</h1>
+      <p class="lead">${escapeHtml(message)}</p>
+      <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
+    </main>
+  </div>
+  <script src="/assets/site.js?v=2" defer></script>
+</body>
 </html>`;
 }
 

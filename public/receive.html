@@ -3,71 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Recevoir un fichier · DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=11">
+  <title>Recevoir — DropQR</title>
+  <link rel="stylesheet" href="/assets/app.css?v=12">
 </head>
 <body>
   <div class="shell">
     <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=11" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links">
-        <a href="/">Accueil</a>
-        <a href="/upload">Envoyer</a>
-        <a class="active" href="/receive">Recevoir</a>
-        <a href="/dashboard">Mes liens</a>
-        <a href="/help">Aide</a>
-      </div>
+      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
+      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a class="active" href="/receive">Recevoir</a><a href="/dashboard">Mes liens</a><a href="/help">Aide</a></div>
     </nav>
 
     <main class="receive-layout">
       <section class="receive-hero card">
-        <div class="pill">Recevoir</div>
-        <h1 class="small-title">Entre ton code et récupère le fichier.</h1>
-        <p class="lead">Le code est envoyé sur Discord avec le QR code. Tu peux aussi scanner le QR : il ouvre cette page automatiquement.</p>
-
+        <div class="page-code">03 / RECEIVE</div>
+        <h1 class="small-title">Le code ouvre le passage.</h1>
+        <p class="lead">Entre le code reçu ou ouvre directement le lien du QR. Le fichier reste visible jusqu'à son expiration.</p>
         <form id="receiveForm" class="receive-form">
-          <label class="field">
-            <span class="label-row">Code DropQR <span class="hint">exemple : TD4CJGT</span></span>
-            <input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" placeholder="ENTRE LE CODE" maxlength="32" required>
-          </label>
-          <button class="primary-btn" type="submit">Recevoir le fichier</button>
+          <label class="field"><span class="label-row">Code DropQR <span class="hint">exemple : Q7R4M2K</span></span><input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" placeholder="ENTRER LE CODE" maxlength="32" required></label>
+          <button class="primary-btn" type="submit">Rechercher le fichier</button>
           <div id="receiveStatus" class="status"></div>
         </form>
       </section>
 
       <section id="receiveResult" class="panel hidden" aria-live="polite">
-        <div class="panel-head">
-          <div>
-            <h2 class="panel-title">Fichier trouvé</h2>
-            <p class="panel-caption">Vérifie les informations puis télécharge.</p>
-          </div>
-          <span class="step-pill" id="resultCodeBadge">Code</span>
-        </div>
+        <div class="panel-head"><div><h2 class="panel-title">Transfert trouvé</h2><p class="panel-caption">Vérifie les informations avant de récupérer le fichier.</p></div><span class="step-pill" id="resultCodeBadge">Code</span></div>
         <div class="panel-body">
           <video id="receiveVideo" class="video-preview hidden" controls playsinline preload="metadata"></video>
-          <div class="info">
-            <div class="file-name" id="receiveFileName">—</div>
-            <div class="meta-grid">
-              <div class="meta-box"><span>Taille</span><strong id="receiveSize">—</strong></div>
-              <div class="meta-box"><span>Expiration</span><strong id="receiveExpiry">—</strong></div>
-              <div class="meta-box"><span>Téléchargements</span><strong id="receiveDownloads">—</strong></div>
-              <div class="meta-box"><span>Nettoyage</span><strong id="receiveCleanup">—</strong></div>
-            </div>
-            <div class="action-row">
-              <a id="downloadButton" class="btn primary" href="#">Télécharger</a>
-              <button id="copyReceiveLink" class="secondary-btn" type="button">Copier le lien</button>
-            </div>
-          </div>
+          <div class="info" style="margin-top:0"><div class="file-name" id="receiveFileName">—</div><div class="meta-grid">
+            <div class="meta-box"><span>Taille</span><strong id="receiveSize">—</strong></div><div class="meta-box"><span>Expiration</span><strong id="receiveExpiry">—</strong></div>
+            <div class="meta-box"><span>Téléchargements</span><strong id="receiveDownloads">—</strong></div><div class="meta-box"><span>Nettoyage</span><strong id="receiveCleanup">—</strong></div>
+          </div><div class="action-row"><a id="downloadButton" class="btn primary" href="#">Télécharger</a><button id="copyReceiveLink" class="secondary-btn" type="button">Copier le lien</button></div></div>
         </div>
       </section>
     </main>
 
-    <footer>
-      <span><strong>Important :</strong> le fichier disparaît après expiration ou après téléchargement si l’option est activée.</span>
-      <span><a href="/upload">Envoyer un autre fichier</a></span>
-    </footer>
+    <footer><span><strong>DropQR</strong> / réception sans compte</span><span><a href="/upload">Envoyer un autre fichier</a></span></footer>
   </div>
-
-  <script src="/assets/receive.js?v=4" defer></script>
+  <script src="/assets/site.js?v=2" defer></script>
+  <script src="/assets/receive.js?v=5" defer></script>
 </body>
 </html>
