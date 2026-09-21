@@ -9,7 +9,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "check": "node --check server.js && node --check netlify/functions/api.mjs && node --check netlify/functions/purge.mjs && node --check lib/params.mjs && node --check lib/s3.mjs && node --check lib/store.mjs && node --check lib/transfers.mjs && node --check lib/qr.mjs && node --check lib/util.mjs && node --check lib/layout.mjs && node --check lib/views.mjs && node --check lib/app.mjs && node --check public/assets/app.js && node --check public/assets/upload.js && node --check public/assets/receive.js && node --check public/assets/dashboard.js && node --check scripts/test-suite.mjs && node --check scripts/test-s3.mjs",
-    "test": "node scripts/test-suite.mjs",
+    "test": "node scripts/test-suite.mjs && node scripts/test-suite.mjs --netlify",
     "test:s3": "node scripts/test-s3.mjs"
   },
   "dependencies": {

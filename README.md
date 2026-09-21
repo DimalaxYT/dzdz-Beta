@@ -183,14 +183,24 @@ défilant, compteurs. Tout se désactive si le système demande de réduire les 
 ## Tests
 
 ```bash
-npm run check      # analyse syntaxique de tous les fichiers
-npm test           # 82 vérifications : pages, sécurité, cycle complet, expiration, débit, SigV4
+npm run check      # analyse syntaxique des 18 fichiers source
+npm test           # 175 vérifications, jouées deux fois : serveur Node, puis fonction Netlify
 npm run test:s3    # nécessite : npm install --no-save s3rver
 ```
 
-`npm test` ne demande aucune dépendance supplémentaire. `npm run test:s3` fait tourner un faux serveur
-S3 pour valider la chaîne multipart et les redirections, et revérifie les signatures SigV4 à partir de
-la spécification AWS.
+`npm test` ne demande aucune dépendance supplémentaire. La même suite est rejouée à travers
+`netlify/functions/api.mjs` : c'est le déploiement réel qui est vérifié, pas seulement le serveur local.
+
+Ce qui est contrôlé : rendu des six pages, absence totale d'emoji et de script en ligne, CSP et en-têtes
+de sécurité, génération de 5000 codes, cycle complet (création, envoi, téléchargement comparé octet par
+octet, plage `Range`), contenus dangereux servis en pièce jointe, compteurs, clé de suppression,
+suppression après téléchargement, expiration et purge, limite de débit, vérificateur SigV4 indépendant,
+câblage des widgets (chaque identifiant utilisé par le JavaScript existe dans le HTML), couverture des
+routes du déploiement (aucun lien mort, aucun fichier manquant) et qualité du rendu (titres, langue,
+images dimensionnées pour éviter les sauts de mise en page).
+
+`npm run test:s3` fait tourner un faux serveur S3 pour valider la chaîne multipart et les redirections,
+et revérifie les signatures SigV4 à partir de la spécification AWS.
 
 ## Dépannage
 

@@ -8,6 +8,10 @@
  * nettoyage automatique, requêtes Range, limite de débit, vérification de
  * signature S3 (SigV4) et expiration.
  *
+ * Deux cibles :
+ *   npm test                    → serveur Node (stockage disque)
+ *   npm test -- --netlify       → fonction Netlify (point d'entrée du déploiement)
+ *
  * Usage : npm test
  */
 
@@ -38,8 +42,16 @@ function check(label, condition, detail = '') {
   console.log(`  [${condition ? 'ok  ' : 'ÉCHEC'}] ${label}${detail ? ` — ${detail}` : ''}`);
 }
 
+const TARGET_NETLIFY = process.argv.includes('--netlify');
+if (TARGET_NETLIFY) console.log('Cible : fonction Netlify (netlify/functions/api.mjs)');
+else console.log('Cible : serveur Node (lib/app.mjs)');
+
 await fsp.rm(ROOT, { recursive: true, force: true });
-const app = createApp();
+// `instance` sert aux accès internes (store, purge), y compris en mode Netlify.
+const instance = createApp();
+const app = TARGET_NETLIFY
+  ? { handleRequest: (await import('../netlify/functions/api.mjs')).default }
+  : instance;
 
 const request = (route, { method = 'GET', body, deleteKey, headers = {} } = {}) => {
   const init = { method, headers: { ...headers } };
@@ -219,7 +231,7 @@ check('un aperçu ne déclenche pas la suppression', (await request(`/api/transf
 /* ------------------------------ 7. Expiration ---------------------------- */
 
 group('7. Expiration et purge');
-const store = await app.getStore();
+const store = await instance.getStore();
 const expiring = await (await request('/api/transfers', {
   method: 'POST',
   body: { fileName: 'temporaire.bin', size: 1000, mimeType: 'application/octet-stream', ttlMinutes: 30 }
@@ -239,7 +251,7 @@ const abandoned = await (await request('/api/transfers', {
 const abandonedMeta = await store.readMeta(abandoned.id);
 abandonedMeta.createdAt = Date.now() - 12 * 60 * 60 * 1000;
 await store.writeMeta(abandonedMeta);
-const purgeResult = await app.purgeNow();
+const purgeResult = await instance.purgeNow();
 check('envoi abandonné nettoyé', purgeResult.removed >= 1, JSON.stringify(purgeResult));
 check('envoi abandonné introuvable', (await store.readMeta(abandoned.id)) === null);
 
@@ -407,8 +419,79 @@ check('la fonction rend la page d’accueil', functionHome.status === 200 && /<t
 const purgeFunction = await import('../netlify/functions/purge.mjs');
 check('tâche planifiée configurée', typeof purgeFunction.config.schedule === 'string', purgeFunction.config.schedule);
 
+/* ------------- 14. Couverture des routes pour le déploiement --------------- */
+
+group('14. Couverture des routes pour Netlify');
+const netlifyToml = await fsp.readFile(path.join(process.cwd(), 'netlify.toml'), 'utf8');
+check('publication du dossier public/', /publish\s*=\s*"public"/.test(netlifyToml));
+check('fonctions prises dans netlify/functions', /functions\s*=\s*"netlify\/functions"/.test(netlifyToml));
+check('mise en cache longue des ressources', (netlifyToml.match(/immutable/g) || []).length >= 2);
+
+const manifest = JSON.parse(await fsp.readFile(path.join(process.cwd(), 'package.json'), 'utf8'));
+check('Netlify Blobs déclaré comme dépendance', Boolean(manifest.dependencies?.['@netlify/blobs']), manifest.dependencies?.['@netlify/blobs']);
+
+const declaredPaths = netlifyConfig.path || [];
+const matchesPath = (route) =>
+  declaredPaths.some((pattern) => {
+    if (!pattern.includes('*')) return pattern === route;
+    const [prefix, suffix] = pattern.split('*');
+    return route.startsWith(prefix) && (!suffix || route.endsWith(suffix));
+  });
+
+for (const route of ['/', '/upload', '/receive', '/dashboard', '/help', '/offline', '/api/health', '/r/exemple', '/c/ABC2345', '/asset/exemple']) {
+  check(`route « ${route} » desservie par la fonction`, matchesPath(route));
+}
+
+// Un lien interne absent des deux listes provoquerait un 404 après déploiement.
+const publicDir = path.join(process.cwd(), 'public');
+const exists = async (route) => {
+  try {
+    await fsp.access(path.join(publicDir, route.replace(/^\/+/, '/')), 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const brokenLinks = [];
+const missingAssets = [];
+const seen = new Set();
+for (const html of Object.values(contents)) {
+  for (const [, attribute, value] of html.matchAll(/(href|src)="([^"]+)"/g)) {
+    if (!value.startsWith('/') || value.startsWith('//')) continue;
+    const route = value.split('#')[0].split('?')[0];
+    if (!route) continue;
+    const staticFile = await exists(route);
+    if (attribute === 'src' && !staticFile && !route.startsWith('/api/')) missingAssets.push(route);
+    if (attribute === 'href' && !staticFile && !matchesPath(route) && seen.size < 200) brokenLinks.push(route);
+    seen.add(route);
+  }
+}
+check('aucun fichier référencé manquant (images, styles, scripts)', missingAssets.length === 0, [...new Set(missingAssets)].join(', '));
+check('aucun lien interne menant à une page non desservie', brokenLinks.length === 0, [...new Set(brokenLinks)].join(', '));
+
+/* ------------------- 15. Qualité du rendu (mise en page) ------------------ */
+
+group('15. Qualité du rendu');
+for (const route of [...pages, '/offline']) {
+  if (!contents[route]) contents[route] = await (await request(route)).text();
+  const html = contents[route];
+  const images = [...html.matchAll(/<img([^>]*)>/g)].map((match) => match[1]);
+  check(`${route} : un seul titre principal`, (html.match(/<h1/g) || []).length === 1);
+  check(`${route} : langue déclarée`, /<html[^>]*lang="fr"/.test(html));
+  check(`${route} : affichage mobile déclaré`, /name="viewport"[^>]*width=device-width/.test(html));
+  check(`${route} : description de la page`, /name="description"/.test(html));
+  check(
+    `${route} : images décrites et dimensionnées (pas de saut de mise en page)`,
+    images.every((attributes) => /alt="/.test(attributes) && /width="/.test(attributes) && /height="/.test(attributes)),
+    `${images.length} image(s)`
+  );
+  check(`${route} : aucun bouton sans libellé accessible`, !/<button[^>]*>\s*<\/button>/.test(html));
+  check(`${route} : thème sombre géré par le système`, /color-scheme/.test(html));
+}
+
 await fsp.rm(ROOT, { recursive: true, force: true });
 
-console.log(`\n${checks - failures}/${checks} vérifications réussies.`);
+console.log(`\nCible testée : ${TARGET_NETLIFY ? 'fonction Netlify' : 'serveur Node'}`);
+console.log(`${checks - failures}/${checks} vérifications réussies.`);
 console.log(failures === 0 ? 'Tous les tests sont passés.' : `${failures} test(s) en échec.`);
 process.exit(failures === 0 ? 0 : 1);
