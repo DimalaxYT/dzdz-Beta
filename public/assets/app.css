@@ -484,8 +484,8 @@ pre { overflow-x: auto; margin: 19px 0 0; padding: 17px; border: 1px solid var(-
 .share-legal { margin: 18px 0 0; text-align: center; }
 .share-legal a { color: var(--muted); font-family: var(--mono); font-size: 10px; text-decoration: none; text-transform: uppercase; }
 .share-legal a:hover { color: var(--acid); }
-.footer-action { display: inline-flex; align-items: center; min-height: 32px; padding: 8px 12px; border: 1px solid var(--line-bright); color: var(--aqua) !important; font-family: var(--mono); font-size: 10px; text-decoration: none; text-transform: uppercase; transition: border-color .2s ease, color .2s ease, transform .2s ease; }
-.footer-action:hover { border-color: var(--acid); color: var(--acid) !important; transform: translateY(-2px); }
+.footer-action { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 8px; color: var(--faint) !important; font-size: 11px; text-decoration: none; border: none !important; background: transparent !important; transition: color .2s ease; opacity: 0.7; }
+.footer-action:hover { color: var(--text) !important; text-decoration: underline; }
 .legal-note { padding: 14px; border-left: 2px solid var(--acid); background: rgba(220,255,94,.05); }
 
 @media (max-width: 940px) {
@@ -550,4 +550,23 @@ html.motion-ready .feature-card.reveal-item.is-visible:hover { transform: transl
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
   html.motion-ready .reveal-item, html.motion-ready .reveal-item.is-visible { opacity: 1; transform: none; }
+}
+
+@media (max-width: 700px) {
+  .qr-card { padding: 12px; }
+  .qr-box { width: min(100%, 170px); }
+  .scan-note { font-size: 11px; letter-spacing: 0.05em; margin-top: 10px; }
+  .meta-grid { grid-template-columns: 1fr; }
+  .meta-box { min-height: auto; padding: 10px 12px; }
+}
+
+.footer-links {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .footer-links {
+    margin-top: 12px;
+  }
 }

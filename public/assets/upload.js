@@ -1,10 +1,11 @@
-(() => {
+const initApp = () => {
   let chunkSize = 8 * 1024 * 1024;
   let uploadConcurrency = 5;
   let maxFileSizeBytes = null;
   let maxFileSizeHuman = '';
 
   const form = document.getElementById('uploadForm');
+  if (!form) return;
   const fileInput = document.getElementById('fileInput');
   const dropzone = document.getElementById('dropzone');
   const dropTitle = document.getElementById('dropTitle');
@@ -428,4 +429,6 @@
   updateFileLabel();
   resetProgress();
   loadConfig();
-})();
+};
+initApp();
+window.addEventListener('pjax:load', initApp);

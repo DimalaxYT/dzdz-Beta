@@ -1,9 +1,11 @@
-(() => {
+
+const pjaxCache = new Map();
+const pjaxParser = window.DOMParser ? new DOMParser() : null;
+
+const initSite = () => {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = document.documentElement;
 
-  // L'ancien tableau de bord local n'existe plus: les anciennes entrées
-  // éventuelles sont supprimées pour ne pas laisser d'historique côté navigateur.
   try { localStorage.removeItem('dropqr.transfers'); } catch (_error) {}
 
   const contactLinks = [...document.querySelectorAll('[data-discord-contact]')];
@@ -62,12 +64,18 @@
     .filter(({ link, href }) => href && href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/api/') && !href.startsWith('#') && !link.target)
     .filter(({ href }, index, links) => links.findIndex((entry) => entry.href === href) === index);
 
-  const prefetchPage = (href) => {
+  const prefetchPage = async (href) => {
     if (prefetched.has(href)) return;
     prefetched.add(href);
-    // fetch() remplit le cache HTTP utilisé par la navigation normale,
-    // y compris dans les navigateurs qui ignorent rel=prefetch.
-    fetch(href, { credentials: 'same-origin', cache: 'force-cache' }).catch(() => {});
+    if (!pjaxParser) return;
+    try {
+      const res = await fetch(href, { credentials: 'same-origin', cache: 'force-cache' });
+      if (res.ok) {
+        const text = await res.text();
+        const doc = pjaxParser.parseFromString(text, 'text/html');
+        pjaxCache.set(href, doc);
+      }
+    } catch (e) {}
   };
 
   internalLinks.forEach(({ link, href }) => {
@@ -107,4 +115,123 @@
   window.addEventListener('resize', requestParallax, { passive: true });
   window.addEventListener('pageshow', requestParallax, { passive: true });
   requestParallax();
+};
+
+initSite();
+window.addEventListener('pjax:load', initSite);
+
+(() => {
+  if (!pjaxParser) return;
+
+  let isNavigating = false;
+
+  const fetchPage = async (url) => {
+    if (pjaxCache.has(url)) return pjaxCache.get(url);
+    try {
+      const res = await fetch(url, { headers: { 'X-PJAX': 'true' } });
+      if (!res.ok) throw new Error('Page not found');
+      const text = await res.text();
+      const doc = pjaxParser.parseFromString(text, 'text/html');
+      pjaxCache.set(url, doc);
+      return doc;
+    } catch (e) {
+      console.error('PJAX fetch error', e);
+      return null;
+    }
+  };
+
+  const navigate = async (url) => {
+    if (isNavigating) return;
+    isNavigating = true;
+
+    document.documentElement.classList.add('pjax-loading');
+    
+    const doc = await fetchPage(url);
+    if (!doc) {
+      window.location.href = url; // Fallback
+      return;
+    }
+
+    const main = document.querySelector('main');
+    const newMain = doc.querySelector('main');
+    
+    if (main && newMain) {
+      // Swap contents instantly
+      document.body.className = doc.body.className;
+      document.title = doc.title;
+      document.querySelector('.shell').replaceChild(newMain, main);
+      
+      const newNav = doc.querySelector('.topbar');
+      const oldNav = document.querySelector('.topbar');
+      if (newNav && oldNav) {
+        oldNav.innerHTML = newNav.innerHTML;
+      }
+
+      const oldScripts = Array.from(document.querySelectorAll('script')).map(s => s.src.split('?')[0]);
+      const newScripts = Array.from(doc.querySelectorAll('script'));
+      
+      for (const s of newScripts) {
+        if (s.src) {
+           const srcBase = s.src.split('?')[0];
+           if (!oldScripts.includes(srcBase)) {
+             const newScript = document.createElement('script');
+             newScript.src = s.src;
+             document.body.appendChild(newScript);
+           }
+        }
+      }
+
+      window.dispatchEvent(new Event('pjax:load'));
+    } else {
+      window.location.href = url;
+    }
+
+    document.documentElement.classList.remove('pjax-loading');
+    isNavigating = false;
+  };
+
+
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    if (!a || !a.href || a.target || a.hasAttribute('download')) return;
+
+    const url = new URL(a.href);
+    if (url.origin !== window.location.origin) return;
+    if (url.pathname.startsWith('/api') || url.pathname.startsWith('/download') || url.pathname.startsWith('/view')) return;
+
+    // Handle hash links on the SAME page
+    if (url.pathname === window.location.pathname && url.hash) {
+      // Allow default browser behavior for anchor jumps
+      return; 
+    }
+
+    e.preventDefault();
+    if (url.pathname !== window.location.pathname || url.search !== window.location.search) {
+      history.pushState({}, '', url.href);
+      navigate(url.href).then(() => {
+        // After navigation finishes, handle scroll position
+        if (url.hash) {
+          const target = document.getElementById(url.hash.substring(1));
+          if (target) target.scrollIntoView();
+        } else {
+          window.scrollTo(0, 0);
+        }
+      });
+    } else {
+        // If clicking same page without hash, just scroll to top
+        window.scrollTo(0, 0);
+    }
+  });
+
+  window.addEventListener('popstate', () => {
+    navigate(window.location.href).then(() => {
+      const url = new URL(window.location.href);
+      if (url.hash) {
+         const target = document.getElementById(url.hash.substring(1));
+         if (target) target.scrollIntoView();
+      } else {
+         window.scrollTo(0, 0);
+      }
+    });
+  });
 })();

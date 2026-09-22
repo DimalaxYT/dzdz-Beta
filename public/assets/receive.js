@@ -1,5 +1,6 @@
-(() => {
+const initApp = () => {
   const form = document.getElementById('receiveForm');
+  if (!form) return;
   const input = document.getElementById('transferCode');
   const status = document.getElementById('receiveStatus');
   const result = document.getElementById('receiveResult');
@@ -110,4 +111,6 @@
   const params = new URLSearchParams(window.location.search);
   const code = normalize(params.get('code'));
   if (code) lookup(code, true);
-})();
+};
+initApp();
+window.addEventListener('pjax:load', initApp);

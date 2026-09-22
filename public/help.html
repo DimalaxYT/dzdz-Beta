@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Aide — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=15">
+  <link rel="stylesheet" href="/assets/app.css?v=17">
 </head>
 <body>
   <div class="shell">
@@ -14,41 +14,38 @@
     </nav>
 
     <header class="hero compact page-heading">
-      <div class="hero-main"><div class="page-code">05 / FIELD MANUAL</div><h1>Le mode d'emploi, sans détour.</h1><p class="lead">DropQR est un transfert temporaire. Voici ce qui se passe dans la preview, sur Render et pendant un upload.</p></div>
-      <div class="capacity-board" data-parallax data-speed="-.07" aria-label="Sommaire de l'aide"><div class="capacity-item"><strong>01</strong><span>utiliser</span></div><div class="capacity-item"><strong>02</strong><span>déployer</span></div><div class="capacity-item"><strong>03</strong><span>comprendre</span></div></div>
+      <div class="hero-main"><div class="page-code">05 / MODE D'EMPLOI</div><h1>Comment utiliser DropQR.</h1><p class="lead">Aucune création de compte n'est requise. Voici comment envoyer et recevoir vos fichiers en toute sécurité.</p></div>
+      <div class="capacity-board" data-parallax data-speed="-.07" aria-label="Sommaire de l'aide"><div class="capacity-item"><strong>01</strong><span>envoyer</span></div><div class="capacity-item"><strong>02</strong><span>recevoir</span></div><div class="capacity-item"><strong>03</strong><span>sécurité</span></div></div>
     </header>
 
     <main class="docs-grid">
       <nav class="docs-nav" aria-label="Sommaire">
-        <a href="#qr-token">Preview Arena</a><a href="#local">Réseau local</a><a href="#deploy">Render</a><a href="#backend">Routes</a><a href="#video">Vidéos</a><a href="#discord">Discord</a><a href="#storage">Stockage</a>
+        <a href="#envoyer">Envoyer un fichier</a><a href="#recevoir">Recevoir un fichier</a><a href="#limites">Limites de taille</a><a href="#suppression">Suppression auto</a><a href="#video">Vidéos</a>
       </nav>
 
       <div class="doc-section">
-        <section id="qr-token" class="card"><h2>Pourquoi le QR peut être bloqué dans la preview ?</h2><p>La preview Arena/e2b protège parfois l'URL avec un header de sécurité appelé <code>e2b-traffic-access-token</code>. Le navigateur Arena possède ce contexte, mais un téléphone qui scanne le QR ne l'a pas.</p><p><strong>Conclusion :</strong> ce message ne signifie pas que le QR est cassé. Pour un test mobile réel, utilise l'URL publique Render ou un serveur lancé sur ton réseau local.</p></section>
+        <section id="envoyer" class="card"><h2>Envoyer un fichier</h2><p>Pour transférer un document :</p><ol><li>Rendez-vous sur la page <strong>Envoyer</strong>.</li><li>Sélectionnez un ou plusieurs fichiers depuis votre appareil (ordinateur, tablette ou téléphone).</li><li>Configurez si besoin la durée d'expiration (de 15 minutes à 24 heures).</li><li>Choisissez si le fichier doit être supprimé <em>immédiatement</em> après le premier téléchargement.</li><li>Cliquez sur Envoyer. Une fois terminé, vous obtiendrez un QR Code et un code court.</li></ol></section>
 
-        <section id="local" class="card"><h2>Tester sur le même Wi-Fi</h2><p>Depuis ton ordinateur, lance le serveur avec l'adresse IP locale de la machine :</p><pre><code>PUBLIC_URL="http://192.168.1.25:3000" npm start</code></pre><p>Ouvre ensuite cette même adresse sur le téléphone. Le pare-feu doit autoriser le port 3000 et les deux appareils doivent être sur le même réseau.</p></section>
+        <section id="recevoir" class="card"><h2>Recevoir un fichier</h2><p>Le destinataire a deux options très simples :</p><ol><li><strong>Scanner le QR Code :</strong> il suffit d'utiliser l'appareil photo du téléphone pour être redirigé vers la page de téléchargement direct.</li><li><strong>Utiliser le Code court :</strong> le destinataire se rend sur la page <strong>Recevoir</strong> et saisit le code (ex: Q7R-4M2) qui lui a été communiqué à l'oral ou par message.</li></ol></section>
 
-        <section id="deploy" class="card"><h2>Déployer sur Render gratuit</h2><p>Le service peut fonctionner avec son stockage local pour des transferts temporaires. Un redémarrage ou un redéploiement peut toutefois supprimer les fichiers actifs. Ce mode convient à une utilisation personnelle ou à une petite bêta.</p><p>Configure au minimum :</p><pre><code>PUBLIC_URL=https://ton-service.onrender.com
-MAX_FILE_SIZE=500mb
-DEFAULT_TTL_MINUTES=15
-MAX_TTL_MINUTES=60
-CHUNK_SIZE_MB=4
-UPLOAD_CONCURRENCY=2</code></pre><p>Le service peut aussi s'endormir sur le plan gratuit. Le premier accès après une période inactive peut donc demander un peu de patience.</p></section>
+        <section id="limites" class="card"><h2>Y a-t-il des limites de taille ?</h2><p>Le système a été conçu pour envoyer rapidement de gros volumes en les découpant (upload parallèle). La limite maximale dépend des paramètres actuels de l'hébergeur, mais peut aller jusqu'à plusieurs Gigaoctets par fichier.</p><p>Assurez-vous simplement que vous avez une connexion stable, DropQR s'occupe de gérer le transfert en arrière-plan pour éviter toute coupure réseau.</p></section>
 
-        <section id="backend" class="card"><h2>Routes utiles</h2><ul><li><code>GET /api/health</code> — état et version du serveur.</li><li><code>GET /api/config</code> — configuration publique de l'interface.</li><li><code>POST /api/transfers</code> — upload classique.</li><li><code>POST /api/transfers/chunk</code> — upload par morceaux.</li><li><code>POST /api/transfers/complete</code> — assemblage final.</li><li><code>GET /api/codes/:code</code> — recherche par code.</li><li><code>DELETE /api/transfers/:id</code> — suppression avec clé privée.</li><li><code>GET /download/:id</code> — récupération du fichier.</li></ul><p>Le nettoyage des transferts expirés est exécuté automatiquement toutes les minutes.</p></section>
+        <section id="suppression" class="card"><h2>Où vont mes fichiers ? (Sécurité)</h2><p>DropQR est un outil de transfert de type "sas d'échange" (et non un stockage cloud type Google Drive). Cela signifie que <strong>vos fichiers ne restent jamais sur nos serveurs de façon permanente</strong>.</p><p>Le fichier est définitivement supprimé et irrécupérable dans 3 cas :</p><ul><li>Lorsque le temps défini au moment de l'envoi expire (ex: 15 minutes).</li><li>Immédiatement après le téléchargement du destinataire (si vous avez coché l'option).</li><li>Manuellement par vous-même depuis l'interface juste après l'envoi.</li></ul></section>
 
-        <section id="video" class="card"><h2>Envoyer une vidéo</h2><p>Les vidéos sont transférées comme les autres fichiers. La page de réception propose un lecteur intégré grâce à <code>/view/:id</code>. Les requêtes Range permettent au lecteur d'avancer sans télécharger toute la vidéo.</p></section>
+        <section id="video" class="card"><h2>Aperçu des vidéos</h2><p>Si vous envoyez un fichier vidéo (MP4, WebM, etc.), le destinataire n'aura pas obligatoirement besoin de le télécharger pour le regarder. DropQR inclut un lecteur vidéo sécurisé directement sur la page de réception.</p></section>
 
-        <section id="discord" class="card"><h2>Publier le code sur Discord</h2><p>Un webhook suffit pour envoyer le code et le QR dans un salon. Il n'est pas nécessaire de créer un bot complet.</p><ol><li>Ouvre les paramètres du salon Discord.</li><li>Va dans <strong>Intégrations</strong>, puis <strong>Webhooks</strong>.</li><li>Crée un webhook et copie son URL.</li><li>Ajoute les variables sur Render.</li></ol><pre><code>DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-DISCORD_USERNAME=DropQR
-DISCORD_NOTIFY=true</code></pre><p>Ne place jamais un token de bot dans le code ou dans le dépôt.</p></section>
-
-        <section id="storage" class="card"><h2>Ce que le stockage local implique</h2><p>Les métadonnées sont conservées dans <code>storage/db.json</code> et les fichiers dans <code>storage/files</code>. C'est rapide et sans coût, mais ce n'est pas une sauvegarde permanente.</p><p>Pour une version plus robuste, un stockage objet comme R2, B2 ou S3 pourra être ajouté plus tard. Pour l'instant, garde des durées courtes et une limite adaptée aux ressources gratuites.</p></section>
       </div>
     </main>
 
-    <footer><span><strong>DropQR</strong> / manuel d'utilisation</span><span><a href="/upload">Créer un transfert</a></span><span><a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a></span><span><a class="footer-action" href="/mentions">Mentions</a></span></footer>
+    
+    <footer>
+      <span><strong>DropQR</strong> / fichiers temporaires / interface sans compte</span>
+      <div class="footer-links">
+        <a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
+        <a class="footer-action" href="/mentions">Mentions</a>
+      </div>
+    </footer>
   </div>
-  <script src="/assets/site.js?v=9" defer></script>
+  <script src="/assets/site.js?v=12" defer></script>
 </body>
 </html>

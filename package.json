@@ -1,7 +1,7 @@
 {
   "name": "qr-file-transfer-site",
   "version": "1.8.0",
-  "description": "Site simple pour transf\u00e9rer des fichiers entre appareils avec QR code et suppression automatique.",
+  "description": "Site simple pour transférer des fichiers entre appareils avec QR code et suppression automatique.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,5 +14,11 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "prettier": "^3.9.8"
   }
 }
