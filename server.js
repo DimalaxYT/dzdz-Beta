@@ -17,9 +17,21 @@ const trustProxy = trustProxyRaw === 'false'
 app.set('trust proxy', trustProxy);
 app.disable('x-powered-by');
 
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, X-Requested-With');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Disposition');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
+
 const APP_VERSION = '1.8.0';
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const DISCORD_WEBHOOK_URL = (process.env.DISCORD_WEBHOOK_URL || '').trim();
@@ -265,7 +277,7 @@ async function buildTransferResponse(req, meta, deleteKey) {
     canPreview: isVideoMime(mimeType),
     qrDataUrl,
     discordConfigured: Boolean(DISCORD_WEBHOOK_URL && DISCORD_NOTIFY),
-    sandboxPreview: isSandboxPreview(req),
+    
     sandboxWarning: isSandboxPreview(req)
       ? 'La preview Arena/e2b nécessite un token côté navigateur. Ce QR code ne marchera pas directement depuis un téléphone externe. Pour tester sur téléphone, déploie le site ou lance-le en local avec PUBLIC_URL=http://IP_DE_TON_PC:3000.'
       : null
@@ -661,8 +673,8 @@ app.use((req, res, next) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('X-Frame-Options', 'DENY');
+  // res.setHeader('Referrer-Policy', 'no-referrer');
+  // // // res.setHeader('X-Frame-Options', 'DENY'); // Removed for Arena Preview // Removed for Arena Preview
   next();
 });
 
@@ -728,10 +740,8 @@ app.get('/api/config', (req, res) => {
     discordConfigured: Boolean(DISCORD_WEBHOOK_URL && DISCORD_NOTIFY),
     discordContactUrl: currentDiscordContactUrl || null,
     discordInviteRotationConfigured: Boolean(DISCORD_BOT_TOKEN && DISCORD_INVITE_CHANNEL_ID),
-    sandboxPreview: isSandboxPreview(req),
-    sandboxWarning: isSandboxPreview(req)
-      ? 'La preview Arena/e2b ajoute une protection par token. Un QR scanné depuis un téléphone hors preview ne peut pas accéder à cette URL. Déploie le site ou lance-le sur ton réseau local avec PUBLIC_URL.'
-      : null
+    
+    
   });
 });
 
@@ -1188,7 +1198,7 @@ function renderSharePage(req, meta) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=15">
+  <link rel="stylesheet" href="/assets/app.css?v=17">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1208,12 +1218,12 @@ function renderSharePage(req, meta) {
       </section>
       ${payload.canPreview ? `<video class="video-preview" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
       <a class="btn primary share-download" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
-      ${isSandboxPreview(req) ? '<div class="warning" style="margin-top:16px">La preview Arena peut demander un token de sécurité à un téléphone externe. Utilise l’URL Render ou le réseau local pour un vrai scan.</div>' : ''}
+      
       <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=9" defer></script>
+  <script src="/assets/site.js?v=12" defer></script>
 </body>
 </html>`;
 }
@@ -1225,7 +1235,7 @@ function renderMessagePage(title, message) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=15">
+  <link rel="stylesheet" href="/assets/app.css?v=17">
 </head>
 <body>
   <div class="shell share-shell">
@@ -1238,7 +1248,7 @@ function renderMessagePage(title, message) {
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
   </div>
-  <script src="/assets/site.js?v=9" defer></script>
+  <script src="/assets/site.js?v=12" defer></script>
 </body>
 </html>`;
 }
