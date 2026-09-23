@@ -1,20 +1,104 @@
+'use strict';
 
-const pjaxCache = new Map();
+// Navigation PJAX + comportements globaux du site.
+//
+// Règles importantes corrigées ici:
+// - on ne précharge QUE des pages statiques sûres (liste blanche). Un lien
+//   /download, /view ou /t/:id ne doit JAMAIS être préchargé: une requête
+//   préventive téléchargerait le fichier et pourrait déclencher sa suppression
+//   avant même que l'utilisateur clique.
+// - le cache PJAX stocke le HTML brut, pas le Document parsé: les nœuds d'un
+//   Document caché étaient déplacés dans la page courante, ce qui cassait une
+//   seconde visite de la même page.
+// - chaque initialisation nettoie les écouteurs globaux de la précédente via
+//   un AbortController: plus de fuite d'écouteurs scroll/resize.
+
+const pjaxCache = new Map(); // pathname+search -> { text, storedAt }
+const PJAX_CACHE_TTL_MS = 60 * 1000;
 const pjaxParser = window.DOMParser ? new DOMParser() : null;
 
+// Seules ces pages peuvent être préchargées en arrière-plan.
+const PREFETCH_WHITELIST = new Set(['/', '/index.html', '/upload', '/receive', '/help', '/mentions', '/dashboard']);
+
+const isSafePrefetchPath = (pathname) => PREFETCH_WHITELIST.has(pathname);
+
+let siteTeardownController = null;
+let siteObserver = null;
+
 const initSite = () => {
+  // Nettoie les écouteurs enregistrés lors de la page précédente.
+  if (siteTeardownController) siteTeardownController.abort();
+  siteTeardownController = new AbortController();
+  const { signal } = siteTeardownController;
+  if (siteObserver) {
+    siteObserver.disconnect();
+    siteObserver = null;
+  }
+
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = document.documentElement;
 
-  try { localStorage.removeItem('dropqr.transfers'); } catch (_error) {}
-
   const contactLinks = [...document.querySelectorAll('[data-discord-contact]')];
+  const authSlots = [...document.querySelectorAll('[data-discord-auth]')];
   const maxSizeLabels = [...document.querySelectorAll('[data-max-file-size]')];
+
+  // Bouton / état "Se connecter avec Discord" dans la barre de navigation.
+  if (authSlots.length) {
+    fetch('/api/auth/me', { cache: 'no-store', credentials: 'same-origin' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!payload || signal.aborted || !payload.configured) return;
+        authSlots.forEach((slot) => {
+          slot.textContent = '';
+          if (payload.user) {
+            const chip = document.createElement('span');
+            chip.className = 'discord-chip';
+
+            const avatar = document.createElement('img');
+            avatar.src = payload.user.avatar;
+            avatar.alt = '';
+            avatar.width = 26;
+            avatar.height = 26;
+            avatar.referrerPolicy = 'no-referrer';
+
+            const name = document.createElement('span');
+            name.className = 'discord-chip-name';
+            name.textContent = payload.user.globalName || payload.user.username;
+            name.title = `Connecté avec Discord: @${payload.user.username}`;
+
+            const logout = document.createElement('button');
+            logout.type = 'button';
+            logout.className = 'discord-logout';
+            logout.textContent = '×';
+            logout.title = 'Se déconnecter';
+            logout.setAttribute('aria-label', 'Se déconnecter de Discord');
+            logout.addEventListener('click', async () => {
+              logout.disabled = true;
+              try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); }
+              catch (_error) {}
+              window.location.reload();
+            });
+
+            chip.append(avatar, name, logout);
+            slot.appendChild(chip);
+          } else {
+            const link = document.createElement('a');
+            link.className = 'discord-auth-btn';
+            link.href = `/api/auth/discord/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+            link.textContent = 'Discord';
+            link.title = 'Se connecter avec Discord (pour que le staff sache qui envoie)';
+            slot.appendChild(link);
+          }
+        });
+      })
+      .catch(() => {});
+  }
+
   if (contactLinks.length || maxSizeLabels.length) {
     fetch('/api/config', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
       .then((config) => {
-        if (!config) return;
+        if (!config || signal.aborted) return;
         if (config.discordContactUrl) {
           contactLinks.forEach((link) => {
             link.href = config.discordContactUrl;
@@ -34,7 +118,7 @@ const initSite = () => {
 
   if (!reducedMotion) {
     root.classList.add('motion-ready');
-    const firstViewport = window.innerHeight * .92;
+    const firstViewport = window.innerHeight * 0.92;
     revealItems.forEach((item, index) => {
       item.classList.add('reveal-item');
       item.style.setProperty('--reveal-delay', `${Math.min(index, 8) * 35}ms`);
@@ -45,76 +129,86 @@ const initSite = () => {
   }
 
   if ('IntersectionObserver' in window && !reducedMotion) {
-    const observer = new IntersectionObserver((entries) => {
+    siteObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
           entry.target.classList.add('is-visible');
-          observer.unobserve(entry.target);
+          siteObserver.unobserve(entry.target);
         }
       });
     }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-    revealItems.forEach((item) => observer.observe(item));
+    revealItems.forEach((item) => siteObserver.observe(item));
   } else {
     revealItems.forEach((item) => item.classList.add('is-visible'));
   }
 
   const prefetched = new Set();
   const internalLinks = [...document.querySelectorAll('a[href]')]
-    .map((link) => ({ link, href: link.getAttribute('href') }))
-    .filter(({ link, href }) => href && href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/api/') && !href.startsWith('#') && !link.target)
-    .filter(({ href }, index, links) => links.findIndex((entry) => entry.href === href) === index);
+    .map((link) => {
+      let url = null;
+      try { url = new URL(link.getAttribute('href'), window.location.href); } catch (_error) { return null; }
+      return { link, url };
+    })
+    .filter((entry) => entry
+      && entry.url.origin === window.location.origin
+      && !entry.link.target
+      && !entry.link.hasAttribute('download')
+      && isSafePrefetchPath(entry.url.pathname))
+    .filter((entry, index, links) => links.findIndex((other) => other.url.href === entry.url.href) === index);
 
-  const prefetchPage = async (href) => {
-    if (prefetched.has(href)) return;
-    prefetched.add(href);
-    if (!pjaxParser) return;
+  const prefetchPage = async (url) => {
+    const key = url.pathname + url.search;
+    if (prefetched.has(key)) return;
+    prefetched.add(key);
+    if (!pjaxParser || !isSafePrefetchPath(url.pathname)) return;
     try {
-      const res = await fetch(href, { credentials: 'same-origin', cache: 'force-cache' });
-      if (res.ok) {
+      const res = await fetch(url.href, { credentials: 'same-origin', signal });
+      if (res.ok && !signal.aborted) {
         const text = await res.text();
-        const doc = pjaxParser.parseFromString(text, 'text/html');
-        pjaxCache.set(href, doc);
+        pjaxCache.set(key, { text, storedAt: Date.now() });
       }
-    } catch (e) {}
+    } catch (_error) {}
   };
 
-  internalLinks.forEach(({ link, href }) => {
-    link.addEventListener('pointerenter', () => prefetchPage(href), { passive: true });
+  internalLinks.forEach(({ link, url }) => {
+    link.addEventListener('pointerenter', () => prefetchPage(url), { passive: true, signal });
   });
 
   const warmNavigation = () => {
-    internalLinks.forEach(({ href }, index) => {
-      window.setTimeout(() => prefetchPage(href), index * 90);
+    if (signal.aborted) return;
+    internalLinks.forEach(({ url }, index) => {
+      window.setTimeout(() => prefetchPage(url), index * 90);
     });
   };
   if ('requestIdleCallback' in window) window.requestIdleCallback(warmNavigation, { timeout: 900 });
   else window.setTimeout(warmNavigation, 250);
 
-  if (reducedMotion || !parallaxItems.length) return;
+  if (!reducedMotion && parallaxItems.length) {
+    let frame = null;
+    const updateParallax = () => {
+      frame = null;
+      if (signal.aborted) return;
+      const viewport = window.innerHeight || 1;
+      parallaxItems.forEach((item) => {
+        const speed = Number(item.dataset.speed || -0.08);
+        const rect = item.getBoundingClientRect();
+        const previous = parseFloat(item.style.getPropertyValue('--parallax-y')) || 0;
+        const layoutTop = rect.top - previous;
+        const rawDistance = (layoutTop + rect.height / 2 - viewport / 2) * speed;
+        const distance = Math.max(-72, Math.min(72, rawDistance));
+        item.style.setProperty('--parallax-y', `${distance.toFixed(2)}px`);
+      });
+    };
 
-  let frame = null;
-  const updateParallax = () => {
-    frame = null;
-    const viewport = window.innerHeight || 1;
-    parallaxItems.forEach((item) => {
-      const speed = Number(item.dataset.speed || -0.08);
-      const rect = item.getBoundingClientRect();
-      const previous = parseFloat(item.style.getPropertyValue('--parallax-y')) || 0;
-      const layoutTop = rect.top - previous;
-      const rawDistance = (layoutTop + rect.height / 2 - viewport / 2) * speed;
-      const distance = Math.max(-72, Math.min(72, rawDistance));
-      item.style.setProperty('--parallax-y', `${distance.toFixed(2)}px`);
-    });
-  };
+    const requestParallax = () => {
+      if (frame === null) frame = window.requestAnimationFrame(updateParallax);
+    };
 
-  const requestParallax = () => {
-    if (frame === null) frame = window.requestAnimationFrame(updateParallax);
-  };
-
-  window.addEventListener('scroll', requestParallax, { passive: true });
-  window.addEventListener('resize', requestParallax, { passive: true });
-  window.addEventListener('pageshow', requestParallax, { passive: true });
-  requestParallax();
+    window.addEventListener('scroll', requestParallax, { passive: true, signal });
+    window.addEventListener('resize', requestParallax, { passive: true, signal });
+    window.addEventListener('pageshow', requestParallax, { passive: true, signal });
+    requestParallax();
+  }
 };
 
 initSite();
@@ -125,15 +219,26 @@ window.addEventListener('pjax:load', initSite);
 
   let isNavigating = false;
 
+  const readCached = (key) => {
+    const entry = pjaxCache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.storedAt > PJAX_CACHE_TTL_MS) {
+      pjaxCache.delete(key);
+      return null;
+    }
+    return entry.text;
+  };
+
   const fetchPage = async (url) => {
-    if (pjaxCache.has(url)) return pjaxCache.get(url);
+    const key = url.pathname + url.search;
+    const cached = readCached(key);
+    if (cached !== null) return cached;
     try {
-      const res = await fetch(url, { headers: { 'X-PJAX': 'true' } });
+      const res = await fetch(url.href, { headers: { 'X-PJAX': 'true' } });
       if (!res.ok) throw new Error('Page not found');
       const text = await res.text();
-      const doc = pjaxParser.parseFromString(text, 'text/html');
-      pjaxCache.set(url, doc);
-      return doc;
+      pjaxCache.set(key, { text, storedAt: Date.now() });
+      return text;
     } catch (e) {
       console.error('PJAX fetch error', e);
       return null;
@@ -145,45 +250,56 @@ window.addEventListener('pjax:load', initSite);
     isNavigating = true;
 
     document.documentElement.classList.add('pjax-loading');
-    
-    const doc = await fetchPage(url);
-    if (!doc) {
-      window.location.href = url; // Fallback
+
+    const html = await fetchPage(url);
+    if (html === null) {
+      window.location.href = url.href; // Fallback: chargement classique.
       return;
     }
 
+    // On parse à chaque navigation: les nœuds cachés ne sont jamais réutilisés.
+    const doc = pjaxParser.parseFromString(html, 'text/html');
+    const shell = document.querySelector('.shell');
     const main = document.querySelector('main');
     const newMain = doc.querySelector('main');
-    
-    if (main && newMain) {
-      // Swap contents instantly
+
+    if (shell && main && newMain) {
       document.body.className = doc.body.className;
       document.title = doc.title;
-      document.querySelector('.shell').replaceChild(newMain, main);
-      
+      shell.replaceChild(newMain, main);
+
       const newNav = doc.querySelector('.topbar');
       const oldNav = document.querySelector('.topbar');
       if (newNav && oldNav) {
         oldNav.innerHTML = newNav.innerHTML;
       }
 
-      const oldScripts = Array.from(document.querySelectorAll('script')).map(s => s.src.split('?')[0]);
-      const newScripts = Array.from(doc.querySelectorAll('script'));
-      
+      const newFooter = doc.querySelector('footer');
+      const oldFooter = document.querySelector('footer');
+      if (newFooter && oldFooter) {
+        oldFooter.innerHTML = newFooter.innerHTML;
+      }
+
+      const knownScripts = new Set(Array.from(document.querySelectorAll('script[src]')).map((s) => s.src.split('?')[0]));
+      const newScripts = Array.from(doc.querySelectorAll('script[src]'));
+
       for (const s of newScripts) {
-        if (s.src) {
-           const srcBase = s.src.split('?')[0];
-           if (!oldScripts.includes(srcBase)) {
-             const newScript = document.createElement('script');
-             newScript.src = s.src;
-             document.body.appendChild(newScript);
-           }
+        const srcBase = s.src.split('?')[0];
+        if (!knownScripts.has(srcBase)) {
+          const newScript = document.createElement('script');
+          newScript.src = s.src;
+          document.body.appendChild(newScript);
+          knownScripts.add(srcBase);
         }
       }
 
+      // Les scripts de page viennent d'être injectés: leur init s'exécute à
+      // l'insertion, puis pjax:load relance initSite + les inits (protégées
+      // contre le double appel par chaque script de page).
       window.dispatchEvent(new Event('pjax:load'));
     } else {
-      window.location.href = url;
+      window.location.href = url.href;
+      return;
     }
 
     document.documentElement.classList.remove('pjax-loading');
@@ -202,14 +318,13 @@ window.addEventListener('pjax:load', initSite);
     // Handle hash links on the SAME page
     if (url.pathname === window.location.pathname && url.hash) {
       // Allow default browser behavior for anchor jumps
-      return; 
+      return;
     }
 
     e.preventDefault();
     if (url.pathname !== window.location.pathname || url.search !== window.location.search) {
       history.pushState({}, '', url.href);
-      navigate(url.href).then(() => {
-        // After navigation finishes, handle scroll position
+      navigate(url).then(() => {
         if (url.hash) {
           const target = document.getElementById(url.hash.substring(1));
           if (target) target.scrollIntoView();
@@ -218,19 +333,18 @@ window.addEventListener('pjax:load', initSite);
         }
       });
     } else {
-        // If clicking same page without hash, just scroll to top
-        window.scrollTo(0, 0);
+      window.scrollTo(0, 0);
     }
   });
 
   window.addEventListener('popstate', () => {
-    navigate(window.location.href).then(() => {
+    navigate(new URL(window.location.href)).then(() => {
       const url = new URL(window.location.href);
       if (url.hash) {
-         const target = document.getElementById(url.hash.substring(1));
-         if (target) target.scrollIntoView();
+        const target = document.getElementById(url.hash.substring(1));
+        if (target) target.scrollIntoView();
       } else {
-         window.scrollTo(0, 0);
+        window.scrollTo(0, 0);
       }
     });
   });

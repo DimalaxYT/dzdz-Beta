@@ -2,15 +2,18 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d0e">
+  <meta name="color-scheme" content="dark">
   <title>Recevoir — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=17">
+  <link rel="stylesheet" href="/assets/app.css?v=20">
 </head>
 <body>
   <div class="shell">
     <nav class="topbar" aria-label="Navigation principale">
       <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a class="active" href="/receive">Recevoir</a><a href="/help">Aide</a></div>
+      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a class="active" href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a></div>
+    <div class="nav-auth" data-discord-auth></div>
     </nav>
 
     <main class="receive-layout">
@@ -19,7 +22,7 @@
         <h1 class="small-title">Le code ouvre le passage.</h1>
         <p class="lead">Entre le code reçu ou ouvre directement le lien du QR. Le fichier reste visible jusqu'à son expiration.</p>
         <form id="receiveForm" class="receive-form">
-          <label class="field"><span class="label-row">Code DropQR <span class="hint">exemple : Q7R4M2K</span></span><input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" placeholder="ENTRER LE CODE" maxlength="32" required></label>
+          <label class="field"><span class="label-row">Code DropQR <span class="hint">exemple : Q7R4M2K</span></span><input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="ENTRER LE CODE" maxlength="32" required></label>
           <button class="primary-btn" type="submit">Rechercher le fichier</button>
           <div id="receiveStatus" class="status"></div>
         </form>
@@ -46,7 +49,7 @@
       </div>
     </footer>
   </div>
-  <script src="/assets/site.js?v=12" defer></script>
-  <script src="/assets/receive.js?v=5" defer></script>
+  <script src="/assets/site.js?v=14" defer></script>
+  <script src="/assets/receive.js?v=6" defer></script>
 </body>
 </html>

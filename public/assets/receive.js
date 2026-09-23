@@ -1,6 +1,9 @@
 const initApp = () => {
   const form = document.getElementById('receiveForm');
   if (!form) return;
+  // Ne jamais initialiser deux fois le même formulaire (navigation PJAX).
+  if (form.dataset.dropqrInit === '1') return;
+  form.dataset.dropqrInit = '1';
   const input = document.getElementById('transferCode');
   const status = document.getElementById('receiveStatus');
   const result = document.getElementById('receiveResult');

@@ -2,9 +2,11 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d0e">
+  <meta name="color-scheme" content="dark">
   <title>Envoyer — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=17">
+  <link rel="stylesheet" href="/assets/app.css?v=20">
 </head>
 <body>
   <div class="shell">
@@ -14,8 +16,10 @@
         <a href="/">Accueil</a>
         <a class="active" href="/upload">Envoyer</a>
         <a href="/receive">Recevoir</a>
+        <a href="/dashboard">Transferts</a>
         <a href="/help">Aide</a>
       </div>
+    <div class="nav-auth" data-discord-auth></div>
     </nav>
     <header class="hero page-heading">
       <div class="hero-main">
@@ -92,6 +96,7 @@
               </div>
               <div class="link-row"><div class="share-link" id="shareLink"></div><button class="copy-btn" type="button" id="copyButton">Copier</button></div>
               <div class="action-row"><a id="openLink" class="secondary-btn" href="#" target="_blank" rel="noopener">Ouvrir</a><button id="newTransfer" class="secondary-btn" type="button">Nouveau</button></div>
+              <div class="action-row"><button id="deleteTransferBtn" class="secondary-btn danger" type="button" disabled>Supprimer le fichier</button><a class="secondary-btn" href="/dashboard">Tableau de bord</a></div>
             </div>
           </div>
         </div>
@@ -106,7 +111,8 @@
       </div>
     </footer>
   </div>
-  <script src="/assets/site.js?v=12" defer></script>
-  <script src="/assets/upload.js?v=13" defer></script>
+  <script src="/assets/site.js?v=14" defer></script>
+  <script src="/assets/store.js?v=1" defer></script>
+  <script src="/assets/upload.js?v=15" defer></script>
 </body>
 </html>

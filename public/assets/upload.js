@@ -1,11 +1,18 @@
+'use strict';
+
 const initApp = () => {
+  const form = document.getElementById('uploadForm');
+  if (!form) return;
+  // Ne jamais initialiser deux fois le même formulaire (double appel possible
+  // après une navigation PJAX: script injecté + événement pjax:load).
+  if (form.dataset.dropqrInit === '1') return;
+  form.dataset.dropqrInit = '1';
+
   let chunkSize = 8 * 1024 * 1024;
   let uploadConcurrency = 5;
   let maxFileSizeBytes = null;
   let maxFileSizeHuman = '';
 
-  const form = document.getElementById('uploadForm');
-  if (!form) return;
   const fileInput = document.getElementById('fileInput');
   const dropzone = document.getElementById('dropzone');
   const dropTitle = document.getElementById('dropTitle');
@@ -25,6 +32,7 @@ const initApp = () => {
   const copyButton = document.getElementById('copyButton');
   const openLink = document.getElementById('openLink');
   const newTransfer = document.getElementById('newTransfer');
+  const deleteTransferBtn = document.getElementById('deleteTransferBtn');
   const deleteAfterDownload = document.getElementById('deleteAfterDownload');
   const ttlMinutes = document.getElementById('ttlMinutes');
   const fileChip = document.getElementById('fileChip');
@@ -46,6 +54,8 @@ const initApp = () => {
   let uploadInProgress = false;
   let currentUploadToken = null;
   let activeRequests = new Set();
+  let currentPayload = null;
+  let currentDeleteKey = null;
 
   function formatBytes(bytes) {
     const value = Number(bytes || 0);
@@ -60,6 +70,8 @@ const initApp = () => {
     }
     return `${size.toFixed(size >= 10 ? 1 : 2)} ${unit}`;
   }
+
+  const sleep = (ms) => new Promise((resolve) => { window.setTimeout(resolve, ms); });
 
   function setStatus(message, type = '') {
     status.className = `status ${type}`.trim();
@@ -129,7 +141,8 @@ const initApp = () => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const config = await response.json();
       backendReachable = true;
-      chunkedUploadAvailable = config.chunkedUpload === true;
+      // L'envoi par morceaux exige maintenant la session init côté serveur.
+      chunkedUploadAvailable = config.chunkedUpload === true && config.chunkInit === true;
       if (Number(config.maxFileSizeBytes) > 0) {
         maxFileSizeBytes = Number(config.maxFileSizeBytes);
         maxFileSizeHuman = config.maxFileSizeHuman || formatBytes(maxFileSizeBytes);
@@ -140,19 +153,22 @@ const initApp = () => {
       if (Number(config.recommendedChunkSizeBytes) > 0) chunkSize = Number(config.recommendedChunkSizeBytes);
       if (Number(config.uploadConcurrency) > 0) uploadConcurrency = Math.min(8, Math.max(1, Number(config.uploadConcurrency)));
 
+      const notices = [];
       if (!chunkedUploadAvailable) {
-        configNotice.classList.remove('hidden');
-        configNotice.innerHTML = `<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.8.0</code>.`;
+        notices.push('<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.11.0</code> et <code>chunkInit: true</code>.');
       }
       if (config.sandboxWarning) {
+        notices.push('<strong>Preview Arena détectée.</strong> Pour un vrai test mobile, utilise ton URL Railway ou Render.');
+      }
+      if (notices.length) {
         configNotice.classList.remove('hidden');
-        configNotice.innerHTML = `<strong>Preview Arena détectée.</strong> Pour un vrai test mobile, utilise ton URL Railway ou Render.`;
+        configNotice.innerHTML = notices.join('<br>');
       }
     } catch (error) {
       backendReachable = false;
       chunkedUploadAvailable = false;
       configNotice.classList.remove('hidden');
-      configNotice.innerHTML = `<strong>Backend API indisponible.</strong> L’upload ne peut pas fonctionner sur un déploiement statique.`;
+      configNotice.innerHTML = '<strong>Backend API indisponible.</strong> L’upload ne peut pas fonctionner sur un déploiement statique.';
       console.warn('DropQR backend unavailable:', error);
     } finally {
       updateFileLabel();
@@ -162,32 +178,70 @@ const initApp = () => {
   function uploadErrorMessage(xhr, payload) {
     if (payload && payload.error) return payload.error;
     if (xhr.status === 0) return 'Le navigateur n’arrive pas à joindre le backend. Vérifie l’URL de déploiement et HTTPS.';
-    if (xhr.status === 400) return 'Requête refusée. Vérifie les logs backend Railway.';
-    if (xhr.status === 404) return 'Route backend introuvable. Redéploie le dernier ZIP comme application Node.js.';
-    if (xhr.status === 413) return 'Morceau refusé par la plateforme. Baisse CHUNK_SIZE_MB à 4 dans les variables Railway.';
+    if (xhr.status === 400) return 'Requête refusée. Vérifie les logs backend.';
+    if (xhr.status === 404) return 'Route backend introuvable. Redéploie la dernière version comme application Node.js.';
+    if (xhr.status === 413) return 'Morceau refusé par la plateforme. Baisse CHUNK_SIZE_MB à 4 dans les variables de déploiement.';
+    if (xhr.status === 429) return 'Trop de requêtes vers le serveur. Réessaie dans un instant.';
     if (xhr.status >= 500) return `Erreur serveur ${xhr.status}. Regarde les logs du déploiement.`;
     return `Upload impossible. Réponse serveur HTTP ${xhr.status}.`;
+  }
+
+  function makeRequestError(xhr, payload) {
+    const error = new Error(uploadErrorMessage(xhr, payload));
+    error.status = xhr.status;
+    const retryAfter = Number(xhr.getResponseHeader('Retry-After'));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) error.retryAfterMs = retryAfter * 1000;
+    return error;
+  }
+
+  function isRetryable(error) {
+    if (error.retryable === false) return false;
+    return error.status === 0 || error.status === 429 || (Number(error.status) >= 500 && Number(error.status) < 600);
+  }
+
+  function retryDelayMs(error, attempt) {
+    if (error.retryAfterMs) return Math.min(error.retryAfterMs, 30000);
+    return Math.min(1000 * (2 ** (attempt - 1)) + Math.random() * 400, 8000);
   }
 
   function sumProgress(progress) {
     return progress.reduce((sum, value) => sum + value, 0);
   }
 
-  function sendChunk({ file, uploadId, chunkIndex, totalChunks, progress, startedAt, token }) {
+  async function initChunkSession(file) {
+    const response = await fetch('/api/transfers/chunk/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        totalSize: file.size,
+        chunkSize,
+        ttlMinutes: Number(ttlMinutes.value),
+        deleteAfterDownload: deleteAfterDownload.checked
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.error || `Initialisation de l’upload impossible HTTP ${response.status}.`);
+      error.status = response.status;
+      error.isInitError = true;
+      throw error;
+    }
+    return payload; // { uploadId, uploadSecret, chunkSize, totalChunks }
+  }
+
+  function sendChunk({ file, session, chunkIndex, progress, startedAt, token }) {
     return new Promise((resolve, reject) => {
-      const start = chunkIndex * chunkSize;
-      const end = Math.min(file.size, start + chunkSize);
+      const start = chunkIndex * session.chunkSize;
+      const end = Math.min(file.size, start + session.chunkSize);
       const blob = file.slice(start, end);
       const body = new FormData();
-      body.append('uploadId', uploadId);
+      // Les champs texte sont placés AVANT le fichier pour que Multer les lise
+      // systématiquement, même en cas d'erreur de taille.
+      body.append('uploadId', session.uploadId);
+      body.append('uploadSecret', session.uploadSecret);
       body.append('chunkIndex', String(chunkIndex));
-      body.append('totalChunks', String(totalChunks));
-      body.append('totalSize', String(file.size));
-      body.append('fileName', file.name);
-      body.append('mimeType', file.type || 'application/octet-stream');
-      body.append('ttlMinutes', ttlMinutes.value);
-      body.append('deleteAfterDownload', deleteAfterDownload.checked ? 'true' : 'false');
-      body.append('autoFinalize', 'false');
       body.append('chunk', blob, `${file.name}.part${chunkIndex}`);
 
       const xhr = new XMLHttpRequest();
@@ -207,7 +261,12 @@ const initApp = () => {
         setProgress((totalLoaded / file.size) * 100, totalLoaded, file.size, `${uploadConcurrency} flux · ${formatBytes(speed)}/s${eta}`);
       };
 
-      xhr.onerror = () => reject(new Error('Erreur réseau pendant l’envoi d’un morceau.'));
+      xhr.onerror = () => {
+        activeRequests.delete(xhr);
+        const error = new Error('Erreur réseau pendant l’envoi d’un morceau.');
+        error.status = 0;
+        reject(error);
+      };
       xhr.onload = () => {
         activeRequests.delete(xhr);
         let payload = {};
@@ -215,26 +274,49 @@ const initApp = () => {
         catch (_error) { payload = {}; }
 
         if (xhr.status < 200 || xhr.status >= 300) {
-          const error = new Error(uploadErrorMessage(xhr, payload));
-          error.status = xhr.status;
-          reject(error);
+          reject(makeRequestError(xhr, payload));
           return;
         }
         progress[chunkIndex] = end - start;
         resolve(payload);
       };
-      xhr.onabort = () => reject(new Error('Upload annulé.'));
+      xhr.onabort = () => {
+        activeRequests.delete(xhr);
+        const error = new Error('Upload annulé.');
+        error.retryable = false;
+        reject(error);
+      };
       xhr.send(body);
     });
   }
 
-  async function completeUpload(uploadId, file) {
+  async function sendChunkWithRetry(args) {
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (args.token !== currentUploadToken) throw new Error('Upload annulé.');
+      try {
+        return await sendChunk(args);
+      } catch (error) {
+        if (attempt === maxAttempts || !isRetryable(error) || args.token !== currentUploadToken) throw error;
+        // Le morceau repart de zéro: on remet son compteur de progression à zéro.
+        args.progress[args.chunkIndex] = 0;
+        const delay = retryDelayMs(error, attempt);
+        progressSpeed.textContent = error.status === 429
+          ? `Limite serveur atteinte · nouvelle tentative dans ${Math.ceil(delay / 1000)} s`
+          : `Connexion instable · nouvelle tentative ${attempt}/${maxAttempts - 1} dans ${Math.ceil(delay / 1000)} s`;
+        await sleep(delay);
+      }
+    }
+    throw new Error('Upload interrompu.');
+  }
+
+  async function completeUpload(session, file) {
     progressLabel.textContent = 'Finalisation';
     setProgress(100, file.size, file.size, 'Assemblage du fichier sur le serveur…');
     const response = await fetch('/api/transfers/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uploadId })
+      body: JSON.stringify({ uploadId: session.uploadId, uploadSecret: session.uploadSecret })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `Finalisation impossible HTTP ${response.status}.`);
@@ -244,9 +326,9 @@ const initApp = () => {
   function uploadClassic(file) {
     return new Promise((resolve, reject) => {
       const body = new FormData();
-      body.append('file', file);
       body.append('ttlMinutes', ttlMinutes.value);
       body.append('deleteAfterDownload', deleteAfterDownload.checked ? 'true' : 'false');
+      body.append('file', file);
 
       const xhr = new XMLHttpRequest();
       activeRequests.add(xhr);
@@ -261,27 +343,49 @@ const initApp = () => {
         setProgress((event.loaded / event.total) * 100, event.loaded, event.total, `Mode classique · ${formatBytes(speed)}/s`);
       };
 
-      xhr.onerror = () => reject(new Error('Erreur réseau pendant l’upload.'));
+      xhr.onerror = () => {
+        activeRequests.delete(xhr);
+        const error = new Error('Erreur réseau pendant l’upload.');
+        error.status = 0;
+        reject(error);
+      };
       xhr.onload = () => {
         activeRequests.delete(xhr);
         let payload = {};
         try { payload = JSON.parse(xhr.responseText || '{}'); }
         catch (_error) { payload = {}; }
         if (xhr.status < 200 || xhr.status >= 300) {
-          const error = new Error(uploadErrorMessage(xhr, payload));
-          error.status = xhr.status;
-          reject(error);
+          reject(makeRequestError(xhr, payload));
           return;
         }
         resolve(payload);
+      };
+      xhr.onabort = () => {
+        activeRequests.delete(xhr);
+        const error = new Error('Upload annulé.');
+        error.retryable = false;
+        reject(error);
       };
       xhr.send(body);
     });
   }
 
+  async function uploadClassicWithRetry(file) {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await uploadClassic(file);
+      } catch (error) {
+        if (attempt === maxAttempts || !isRetryable(error)) throw error;
+        await sleep(retryDelayMs(error, attempt));
+      }
+    }
+    throw new Error('Upload interrompu.');
+  }
+
   async function uploadFileInChunks(file) {
-    const uploadId = makeUploadId();
-    const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+    const session = await initChunkSession(file);
+    const totalChunks = session.totalChunks;
     const startedAt = performance.now();
     const token = makeUploadId();
     currentUploadToken = token;
@@ -297,7 +401,7 @@ const initApp = () => {
         if (currentUploadToken !== token) throw new Error('Upload annulé.');
         const chunkIndex = nextIndex;
         nextIndex += 1;
-        await sendChunk({ file, uploadId, chunkIndex, totalChunks, progress, startedAt, token });
+        await sendChunkWithRetry({ file, session, chunkIndex, progress, startedAt, token });
         completed += 1;
         progressLabel.textContent = `Upload rapide · ${completed}/${totalChunks}`;
       }
@@ -306,7 +410,7 @@ const initApp = () => {
     const workers = Array.from({ length: Math.min(uploadConcurrency, totalChunks) }, () => worker());
     await Promise.all(workers);
     setProgress(100, file.size, file.size, 'Tous les morceaux sont envoyés.');
-    return completeUpload(uploadId, file);
+    return completeUpload(session, file);
   }
 
   function showResult(payload, file) {
@@ -325,6 +429,11 @@ const initApp = () => {
     copyButton.dataset.url = payload.shareUrl;
     openLink.href = payload.shareUrl;
 
+    currentPayload = payload;
+    currentDeleteKey = payload.deleteKey || null;
+    if (window.DropQRStore) window.DropQRStore.remember(payload);
+    if (deleteTransferBtn) deleteTransferBtn.disabled = !currentDeleteKey;
+
     if (payload.sandboxWarning) {
       sandboxWarning.classList.remove('hidden');
       sandboxWarning.textContent = payload.sandboxWarning;
@@ -332,7 +441,7 @@ const initApp = () => {
 
     emptyState.style.display = 'none';
     result.classList.add('visible');
-    setStatus('C’est prêt. Le code et le QR peuvent être partagés.', 'success');
+    setStatus('C’est prêt. Le code et le QR peuvent être partagés. Le transfert est aussi dans ton tableau de bord.', 'success');
   }
 
   fileInput.addEventListener('change', updateFileLabel);
@@ -371,6 +480,8 @@ const initApp = () => {
     }
 
     result.classList.remove('visible');
+    currentPayload = null;
+    currentDeleteKey = null;
     sandboxWarning.classList.add('hidden');
     emptyState.style.display = 'grid';
     setStatus('Upload en cours… garde cette page ouverte.');
@@ -383,11 +494,23 @@ const initApp = () => {
     try {
       let payload;
       if (!backendReachable) throw new Error('Backend API indisponible sur ce domaine.');
-      if (chunkedUploadAvailable) {
-        payload = await uploadFileInChunks(file);
+      if (chunkedUploadAvailable && file.size > 0) {
+        try {
+          payload = await uploadFileInChunks(file);
+        } catch (error) {
+          // Backend ancien sans route /chunk/init: repli sur l'upload classique
+          // uniquement pour les petits fichiers.
+          if (error.isInitError && error.status === 404 && file.size <= 40 * 1024 * 1024) {
+            chunkedUploadAvailable = false;
+            progressLabel.textContent = 'Upload classique';
+            payload = await uploadClassicWithRetry(file);
+          } else {
+            throw error;
+          }
+        }
       } else if (file.size <= 40 * 1024 * 1024) {
         progressLabel.textContent = 'Upload classique';
-        payload = await uploadClassic(file);
+        payload = await uploadClassicWithRetry(file);
       } else {
         throw new Error('Backend déployé pas à jour. Redéploie la dernière version.');
       }
@@ -421,10 +544,42 @@ const initApp = () => {
   newTransfer.addEventListener('click', () => {
     if (uploadInProgress) return;
     result.classList.remove('visible');
+    currentPayload = null;
+    currentDeleteKey = null;
     emptyState.style.display = 'grid';
     clearSelectedFile();
     fileInput.focus();
   });
+
+  if (deleteTransferBtn) {
+    deleteTransferBtn.addEventListener('click', async () => {
+      if (!currentPayload || !currentDeleteKey || deleteTransferBtn.disabled) return;
+      const confirmed = window.confirm(`Supprimer définitivement « ${currentPayload.fileName} » du serveur ?`);
+      if (!confirmed) return;
+
+      deleteTransferBtn.disabled = true;
+      setStatus('Suppression du transfert…');
+      try {
+        const response = await fetch(`/api/transfers/${encodeURIComponent(currentPayload.id)}`, {
+          method: 'DELETE',
+          headers: { 'X-Delete-Key': currentDeleteKey }
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Suppression impossible HTTP ${response.status}.`);
+
+        if (window.DropQRStore) window.DropQRStore.remove(currentPayload.id);
+        result.classList.remove('visible');
+        currentPayload = null;
+        currentDeleteKey = null;
+        emptyState.style.display = 'grid';
+        setStatus('Transfert supprimé du serveur.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      } finally {
+        deleteTransferBtn.disabled = !currentDeleteKey;
+      }
+    });
+  }
 
   updateFileLabel();
   resetProgress();
