@@ -2,15 +2,18 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d0e">
+  <meta name="color-scheme" content="dark">
   <title>Backend indisponible — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=17">
+  <link rel="stylesheet" href="/assets/app.css?v=20">
 </head>
 <body>
   <div class="shell">
     <nav class="topbar" aria-label="Navigation principale">
       <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/help">Aide</a></div>
+      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a></div>
+    <div class="nav-auth" data-discord-auth></div>
     </nav>
     <main class="receive-layout">
       <section class="receive-hero card">
@@ -29,6 +32,6 @@
       </div>
     </footer>
   </div>
-  <script src="/assets/site.js?v=12" defer></script>
+  <script src="/assets/site.js?v=14" defer></script>
 </body>
 </html>
