@@ -440,3 +440,17 @@ footer.site-footer .colophon { color: var(--ink-faint); font-size: 12.5px; }
   .hero-hint .line::after { animation: none; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* ---------- Boutons Help / Receive dans la barre du haut ---------- */
+.nv-links a.nv-app {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 999px;
+  border: 1px solid rgba(139,124,255,.38); background: rgba(139,124,255,.08);
+  color: var(--ink); font-weight: 600;
+  transition: border-color .3s ease, background .3s ease, transform .35s var(--ease-silk);
+}
+.nv-links a.nv-app::after { display: none; }
+.nv-links a.nv-app:hover { border-color: rgba(139,124,255,.75); background: rgba(139,124,255,.16); transform: translateY(-1px); }
+.nv-links a.nv-app.active { border-color: rgba(139,124,255,.85); background: rgba(139,124,255,.2); }
+.nv-links a.nv-app .ico { font-size: 12px; opacity: .8; }
+@media (max-width: 560px) { .nv-links a.nv-app { padding: 6px 11px; } }
