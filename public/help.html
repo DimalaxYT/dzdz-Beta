@@ -3,52 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark light">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
   <title>Aide — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <script src="/assets/experience.js?v=4"></script>
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
 </head>
-<body>
-  <div class="shell">
-    <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a class="active" href="/help">Aide</a></div>
-    <div class="nav-auth" data-discord-auth></div>
+<body class="page-sub" data-static-page>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="nv" id="nv">
+    <a class="nv-brand" href="/" aria-label="DropQR, accueil"><img class="nv-logo" src="/assets/logo.svg?v=3" alt="" width="30" height="30"><span>DropQR</span></a>
+    <nav class="nv-links" aria-label="Navigation principale">
+      <a href="/">Accueil</a>
+      <a href="/dashboard">Transferts</a>
+      <a href="/help" aria-current="page">Comment ça marche</a>
     </nav>
-
-    <header class="hero compact page-heading">
-      <div class="hero-main"><div class="page-code">05 / MODE D'EMPLOI</div><h1>Comment utiliser DropQR.</h1><p class="lead">Aucune création de compte n'est requise. Voici comment envoyer et recevoir vos fichiers en toute sécurité.</p></div>
-      <div class="capacity-board" data-parallax data-speed="-.07" aria-label="Sommaire de l'aide"><div class="capacity-item"><strong>01</strong><span>envoyer</span></div><div class="capacity-item"><strong>02</strong><span>recevoir</span></div><div class="capacity-item"><strong>03</strong><span>sécurité</span></div></div>
-    </header>
-
-    <main class="docs-grid">
-      <nav class="docs-nav" aria-label="Sommaire">
-        <a href="#envoyer">Envoyer un fichier</a><a href="#recevoir">Recevoir un fichier</a><a href="#limites">Limites de taille</a><a href="#suppression">Suppression auto</a><a href="#video">Vidéos</a>
+    <div class="nv-right">
+      <nav class="nv-actions" aria-label="Partager un fichier">
+        <a class="nv-action nv-send" href="/upload"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer</span></a>
+        <a class="nv-action nv-receive" href="/receive"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Recevoir</span></a>
       </nav>
-
-      <div class="doc-section">
-        <section id="envoyer" class="card"><h2>Envoyer un fichier</h2><p>Pour transférer un document :</p><ol><li>Rendez-vous sur la page <strong>Envoyer</strong>.</li><li>Sélectionnez un ou plusieurs fichiers depuis votre appareil (ordinateur, tablette ou téléphone).</li><li>Configurez si besoin la durée d'expiration (de 15 minutes à 24 heures).</li><li>Choisissez si le fichier doit être supprimé <em>immédiatement</em> après le premier téléchargement.</li><li>Cliquez sur Envoyer. Une fois terminé, vous obtiendrez un QR Code et un code court.</li></ol></section>
-
-        <section id="recevoir" class="card"><h2>Recevoir un fichier</h2><p>Le destinataire a deux options très simples :</p><ol><li><strong>Scanner le QR Code :</strong> il suffit d'utiliser l'appareil photo du téléphone pour être redirigé vers la page de téléchargement direct.</li><li><strong>Utiliser le Code court :</strong> le destinataire se rend sur la page <strong>Recevoir</strong> et saisit le code (ex: Q7R-4M2) qui lui a été communiqué à l'oral ou par message.</li></ol></section>
-
-        <section id="limites" class="card"><h2>Y a-t-il des limites de taille ?</h2><p>Le système a été conçu pour envoyer rapidement de gros volumes en les découpant (upload parallèle). La limite maximale dépend des paramètres actuels de l'hébergeur, mais peut aller jusqu'à plusieurs Gigaoctets par fichier.</p><p>Assurez-vous simplement que vous avez une connexion stable, DropQR s'occupe de gérer le transfert en arrière-plan pour éviter toute coupure réseau.</p></section>
-
-        <section id="suppression" class="card"><h2>Où vont mes fichiers ? (Sécurité)</h2><p>DropQR est un outil de transfert de type "sas d'échange" (et non un stockage cloud type Google Drive). Cela signifie que <strong>vos fichiers ne restent jamais sur nos serveurs de façon permanente</strong>.</p><p>Le fichier est définitivement supprimé et irrécupérable dans 3 cas :</p><ul><li>Lorsque le temps défini au moment de l'envoi expire (ex: 15 minutes).</li><li>Immédiatement après le téléchargement du destinataire (si vous avez coché l'option).</li><li>Manuellement par vous-même depuis l'interface juste après l'envoi.</li></ul></section>
-
-        <section id="video" class="card"><h2>Aperçu des vidéos</h2><p>Si vous envoyez un fichier vidéo (MP4, WebM, etc.), le destinataire n'aura pas obligatoirement besoin de le télécharger pour le regarder. DropQR inclut un lecteur vidéo sécurisé directement sur la page de réception.</p></section>
-
-      </div>
+      <details class="nv-menu">
+        <summary aria-label="Menu de navigation"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#menu"></use></svg></summary>
+        <div class="nv-menu-panel">
+          <p class="menu-label">À portée de main</p>
+          <nav aria-label="Menu complémentaire">
+            <a href="/">Accueil <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/dashboard">Mes transferts <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/help" aria-current="page">Aide <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/mentions">Mentions et confidentialité <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+          </nav>
+          <div class="nav-auth" data-discord-auth></div>
+        </div>
+      </details>
+    </div>
+  </header>
+  <div class="shell">
+    <main id="main" tabindex="-1">
+      <section class="page-hero"><div><p class="kicker">04 / Mode d’emploi</p><h1>Le partage.<br><span class="thin">Sans détour.</span></h1><p class="lead">Un navigateur suffit. Voici l’essentiel pour envoyer et recevoir un fichier avec DropQR.</p></div><div class="capacity-board" aria-label="Étapes du partage"><div class="capacity-item"><strong>01</strong><span>envoyer</span></div><div class="capacity-item"><strong>02</strong><span>recevoir</span></div><div class="capacity-item"><strong>03</strong><span>partager</span></div></div></section>
+      <div class="docs-grid"><nav class="docs-nav" aria-label="Sommaire"><a href="#envoyer">Envoyer</a><a href="#recevoir">Recevoir</a><a href="#limites">Limites</a><a href="#suppression">Suppression</a><a href="#video">Vidéos</a><a href="#deploy">Déploiement</a></nav><div class="doc-section">
+        <section id="envoyer" class="card"><h2>Envoyer un fichier</h2><ol><li>Sur l’accueil, ouvrez les options si vous souhaitez changer la durée ou permettre plusieurs téléchargements.</li><li>Appuyez sur <strong>Choisir un fichier</strong> ou, sur téléphone, <strong>Prendre une photo</strong>. Un seul fichier est envoyé par transfert. Sur l’accueil, l’envoi commence automatiquement ; sur la page Envoyer, confirmez avec le bouton d’envoi.</li><li>Gardez la page ouverte pendant le transfert. Vous pouvez l’annuler tant que la finalisation n’a pas commencé.</li><li>Une fois prêt, copiez le lien, utilisez le partage natif du téléphone ou téléchargez le QR.</li></ol></section>
+        <section id="recevoir" class="card"><h2>Recevoir un fichier</h2><p>Ouvrez le lien reçu ou scannez le QR avec l’appareil photo de votre téléphone. Le nom et la taille du fichier s’affichent avant le téléchargement.</p><p>Si vous avez seulement le code, rendez-vous sur <a href="/receive">Recevoir</a>. Vérifiez les informations, puis appuyez sur <strong>Télécharger le fichier</strong>.</p></section>
+        <section id="limites" class="card"><h2>Quelles sont les limites ?</h2><p>Limite actuelle : <strong data-max-file-size>selon la configuration du serveur</strong>. L’hébergeur peut appliquer ses propres limites de taille, de stockage ou de durée des requêtes.</p><p>Les fichiers sont envoyés par morceaux lorsque le serveur le permet. En cas de coupure, certains morceaux sont réessayés automatiquement. Si l’envoi échoue, gardez le fichier sélectionné et réessayez. Quitter la page interrompt le transfert.</p></section>
+        <section id="suppression" class="card"><h2>Temporaire, par choix.</h2><p>DropQR n’est pas un service de stockage permanent. Le fichier est supprimé à l’expiration, après le premier téléchargement si cette option est cochée, ou à votre demande.</p><p>Pour supprimer un fichier manuellement, utilisez les détails du résultat ou la page <a href="/dashboard">Mes transferts</a>. Les clés de suppression restent enregistrées dans ce navigateur et sont envoyées au serveur uniquement lors d’une demande de suppression. Effacer la liste locale ne supprime pas les fichiers du serveur.</p></section>
+        <section id="video" class="card"><h2>Et les vidéos ?</h2><p>Un aperçu est proposé pour les fichiers vidéo compatibles avec votre navigateur. Il ne déclenche pas la suppression après téléchargement. Si la vidéo ne se lit pas, téléchargez-la pour l’ouvrir avec votre lecteur habituel.</p></section>
+        <section id="deploy" class="card"><h2>Déployer DropQR</h2><p>Le transfert nécessite le serveur Node.js. Un hébergement uniquement statique ne suffit pas. Utilisez Render, Railway ou un serveur compatible avec Node.js 18 ou plus récent.</p><pre><code>npm ci
+npm start</code></pre><p>Configurez <code>PUBLIC_URL</code> avec votre adresse HTTPS publique pour obtenir des liens et QR accessibles depuis un autre appareil. Consultez le README du projet pour les options et la connexion Discord.</p></section>
+      </div></div>
     </main>
-
-    
-    <footer>
-      <span><strong>DropQR</strong> / fichiers temporaires / interface sans compte</span>
-      <div class="footer-links">
-        <a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
-        <a class="footer-action" href="/mentions">Mentions</a>
-      </div>
-    </footer>
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
+  <footer class="site-footer">
+    <a class="foot-brand" href="/">DropQR<span class="signal-square" aria-hidden="true"></span></a>
+    <nav aria-label="Application">
+      <a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a><a href="/mentions">Mentions légales</a>
+      <a data-discord-contact href="#" hidden>Discord</a>
+    </nav>
+    <span class="colophon">Un fichier. Un lien. C’est partagé.</span>
+  </footer>
+  <script src="/assets/site.js?v=16" defer></script>
+
 </body>
 </html>

@@ -4,13 +4,38 @@ DropQR est un site multi-pages pour transférer temporairement des fichiers entr
 
 ## Pages
 
-- `/` : accueil — expérience WebGL 3D immersive (scroll cinématique, Drop Zone fonctionnelle)
+- `/` : accueil — transfert immédiat sur mobile, ambiance WebGL sur ordinateur
 - `/upload` : création d’un transfert avec barre de progression
 - `/receive` : recherche d’un transfert par code
 - `/dashboard` : transferts créés depuis le navigateur, avec suppression manuelle par clé privée
 - `/help` : aide, déploiement et explication du QR code dans la preview Arena
 - `/mentions` : mentions légales, confidentialité et données traitées
-- `/t/:id` : page publique de téléchargement
+- `/d/:id` : page de réception dédiée, utilisable sans JavaScript
+- `/t/:id`, `/share/:id`, `/c/:code` : anciens liens toujours compatibles
+
+## Expérience mobile et design commun
+
+- **Envoyer et Recevoir restent visibles en haut**, avec un menu compact pour l’aide, les transferts, les mentions et la connexion Discord facultative.
+- `public/assets/landing.css` habille toutes les pages : ambiance sombre de la landing sur ordinateur, papier chaud / encre / lime et parcours tactile sur téléphone. `app.css` ne contient qu’un import de compatibilité.
+- `experience.js` détecte les téléphones, tablettes tactiles et fenêtres étroites (y compris en paysage). La 3D est également désactivée avec `prefers-reduced-motion`, l’économie de données ou une mémoire déclarée faible. La taille de la fenêtre seule n’identifie pas un téléphone.
+- Sur mobile, **ni Three.js ni le générateur QR décoratif ne sont téléchargés**. Sur ordinateur, `landing.js` charge la scène à la demande, après l’interface. `/?3d=0` force le mode plat ; `/?3d=1` permet un essai explicite en 3D, sans ignorer la préférence de mouvement réduit.
+- `upload.js` est le contrôleur commun de l’accueil et de `/upload` : photo via le sélecteur système, aperçu local, morceaux parallèles, nouvelles tentatives, annulation et retour d’erreur. L’accueil envoie dès la sélection ; `/upload` permet une confirmation préalable. Les options de durée sont alignées sur `/api/config`.
+- Après l’envoi : **QR SVG à quatre modules de marge**, code, copie, partage natif avec repli vers la copie, téléchargement du QR et suppression manuelle. Le PNG reste dans l’API pour compatibilité. Aucun téléchargement de fichier n’est lancé par l’affichage du QR ou par la navigation.
+- La réception `/d/:id` est rendue par le serveur. Le nom, la taille et le bouton Télécharger précèdent tout aperçu vidéo. Les anciens liens et la recherche par code restent pris en charge.
+- L’historique et les clés de suppression sont conservés dans le navigateur. Les informations de confidentialité reflètent ce fonctionnement et l’usage facultatif de Discord.
+
+Les écrans utilisent les assets locaux, sans police ni moteur graphique externe. Le partage natif dépend du navigateur, de HTTPS et des autorisations de l’éventuelle iframe ; l’annulation de la feuille de partage n’est pas une erreur. « Prendre une photo » ouvre le sélecteur natif (`capture=environment`) : le choix précis dépend du système du téléphone.
+
+### Vérification
+
+```bash
+npm ci
+npm run check
+npx playwright install chromium
+npm test
+```
+
+Les tests démarrent leur propre serveur sur le port **3100**, avec le stockage isolé dans `storage/e2e` (ignoré par Git), une limite de 2 Mo et des morceaux de 1 Mo. Ils couvrent les largeurs 320 / 375 / 390 / 430 px, le paysage, la sélection de caméra, l’annulation, les erreurs, le partage, les transferts réels, le décodage du QR, la navigation répétée, la réception sans JS et un contrôle automatisé WCAG AA via axe. Un navigateur système peut être indiqué avec `CHROMIUM_EXECUTABLE=/chemin/vers/chromium npm test`. L’audit automatisé ne remplace pas une vérification avec lecteur d’écran et de vrais téléphones.
 
 ## Backend
 
@@ -158,10 +183,20 @@ MAX_FILE_SIZE_MB=2048 npm start
 
 ## Variables d’environnement
 
+Un modèle sans secret est disponible dans `.env.example`. Pour le charger localement avec Node.js 20.6 ou plus récent :
+
+```bash
+cp .env.example .env
+node --env-file=.env server.js
+```
+
+Avec Node.js 18, exporte les variables dans le shell ou configure-les dans ton hébergeur. `npm start` ne charge pas automatiquement `.env`. Ne versionne jamais les tokens ni les secrets Discord.
+
 | Variable | Défaut | Rôle |
 | --- | ---: | --- |
 | `PORT` | `3000` | Port HTTP (obligatoire derrière Render/Railway, qui l'injectent) |
 | `HOST` | `0.0.0.0` | Adresse d’écoute |
+| `STORAGE_DIR` | `storage/` | Dossier local contenant fichiers et métadonnées ; permet un stockage de test séparé |
 | `TRUST_PROXY` | `1` | Nombre de reverse proxies de confiance (`false` pour désactiver, `2`… pour enchaîner) |
 | `CORS_ORIGINS` | vide | Origines autorisées pour l'API, séparées par des virgules (`*` pour tout autoriser — déconseillé) ; vide = same-origin uniquement |
 | `CHUNK_RATE_LIMIT` | `6000` | Nombre maximal de requêtes morceaux par IP par fenêtre de 10 minutes |
@@ -199,7 +234,8 @@ MAX_FILE_SIZE_MB=2048 npm start
 - `GET /api/transfers/:id`
 - `DELETE /api/transfers/:id` (en-tête `X-Delete-Key`)
 - `GET /api/codes/:code`
-- `GET /t/:id`
+- `GET /d/:id` (réception sans JavaScript)
+- `GET /t/:id` (compatibilité)
 - `GET /view/:id` (lecture vidéo, support des requêtes `Range`)
 - `GET /download/:id`
 
@@ -401,7 +437,9 @@ Connexion Discord des visiteurs :
 - endpoints : `GET /api/auth/me`, `GET /api/auth/discord/login`, `GET /api/auth/discord/callback`, `POST /api/auth/logout` ;
 - configuration : `DISCORD_CLIENT_ID` + `DISCORD_CLIENT_SECRET` (+ redirect `…/api/auth/discord/callback` dans le portail développeur Discord).
 
-## Version 1.12.0
+## Version 1.12.0 — lancement initial de la 3D
+
+Les notes ci-dessous décrivent le lancement initial. La refonte mobile et le design commun documentés en début de README remplacent son ancien contrôleur d’upload et sa stratégie mobile.
 
 Nouvelle page d'accueil : **expérience WebGL 3D immersive** (`/`) :
 
@@ -413,4 +451,4 @@ Nouvelle page d'accueil : **expérience WebGL 3D immersive** (`/`) :
 - assets servis en same-origin (CSP `script-src 'self'` respectée) : `assets/vendor/three.module.min.js`, `assets/vendor/qrcode.min.js`, `assets/landing.css`, `assets/landing3d.js` (aucune dépendance CDN) ;
 - le slot de connexion **Discord** (v1.11.0) est conservé dans la nouvelle barre de navigation.
 
-La page classique reste accessible : `/upload`, `/receive`, `/dashboard`, `/help` et `/mentions` sont inchangées.
+Les routes `/upload`, `/receive`, `/dashboard`, `/help` et `/mentions` restent accessibles ; elles utilisent maintenant le design partagé de la landing.

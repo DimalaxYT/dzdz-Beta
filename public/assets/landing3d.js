@@ -8,12 +8,12 @@
      5. feature mini-scenes (scissor rendering on #gl2)
      6. scroll & pointer rig (true depth parallax)
      7. upload sequence (file ? object ? particle-QR morph)
-     8. UI: nav, auth slot, toast, result overlay
+     8. Pont événementiel vers le contrôleur de transfert indépendant
 */
 
 import * as THREE from '/assets/vendor/three.module.min.js';
 
-(() => {
+export function initScene() {
   'use strict';
 
   /* ------------------------------------------------ 1. environment */
@@ -33,6 +33,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
   const canvas = document.getElementById('gl');
   const canvas2 = document.getElementById('gl2');
   const body = document.body;
+  if (!canvas || !window.DropQRExperience?.enable3D) return;
 
   let renderer = null;
   try {
@@ -44,9 +45,11 @@ import * as THREE from '/assets/vendor/three.module.min.js';
   }
   if (!renderer) {
     body.classList.add('no-webgl');
-    initFlatUI(); // UI (upload, overlays, auth) reste fonctionnelle sans 3D
     return;
   }
+
+  body.classList.remove('no-webgl');
+  body.classList.add('webgl-ready');
 
   /* ------------------------------------------------ 2. renderer / scene / camera / lights */
   renderer.setPixelRatio(Q.dpr);
@@ -842,306 +845,68 @@ import * as THREE from '/assets/vendor/three.module.min.js';
     };
   }
 
-  /* ------------------------------------------------ 7. état UI / upload */
+  /* ------------------------------------------------ 7. Pont UI → scène (jamais de réseau ici) */
   const state = {
     dragging: false, dragDepth: 0,
     uploading: false, progress: 0,
     uploadW: 0, targetUploadW: 0,
-    morphing: false,
-    resultShown: false,
-    resetToken: 0
+    morphing: false, resultShown: false
   };
-  const dzTitle = dz ? dz.querySelector('.dz-title') : null;
-  const dzSub = dz ? dz.querySelector('.dz-sub') : null;
-  const upOverlay = document.getElementById('upload-overlay');
-  const upName = document.getElementById('up-name');
-  const upStatus = document.getElementById('up-status');
-  const upBar = document.getElementById('up-bar');
-  const upPct = document.getElementById('up-pct');
-  const resOverlay = document.getElementById('result-overlay');
-  const resLink = document.getElementById('result-link');
-  const resNote = document.getElementById('result-note');
-  const resQrHost = document.getElementById('result-qr');
-  const veil = document.getElementById('drag-veil');
-  const toastEl = document.getElementById('toast');
+  let portalPulse = 0;
 
-  let toastTimer = 0;
-  function toast(msg) {
-    if (!toastEl) return;
-    toastEl.textContent = msg;
-    toastEl.classList.add('on');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('on'), 2400);
+  function resetExperience() {
+    state.uploading = false;
+    state.morphing = false;
+    state.targetUploadW = 0;
+    state.resultShown = false;
+    morphUniforms.uMix.value = 0;
+    morphUniforms.uAlpha.value = 0;
+    morph.visible = false;
+    heroFile.visible = false;
+    heroFaceMat.opacity = 1;
+    heroBodyMat.opacity = 1;
   }
-
-  const RING_LEN = 2 * Math.PI * 58;
-  if (upBar) { upBar.style.strokeDasharray = `${RING_LEN}`; upBar.style.strokeDashoffset = `${RING_LEN}`; }
-  function setProgress(p) {
-    state.progress = p;
-    if (upBar) upBar.style.strokeDashoffset = `${RING_LEN * (1 - p)}`;
-    if (upPct) upPct.textContent = `${Math.round(p * 100)}%`;
+  function showResult() {
+    // Le vrai QR HTML est déjà affiché. Ne jamais le retarder pour une animation.
+    state.resultShown = true;
+    state.uploading = false;
   }
-
-  function humanSize(b) {
-    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let i = 0, v = b;
-    while (v >= 1024 && i < u.length - 1) { v /= 1024; i += 1; }
-    return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
-  }
-
-  function heroFileLabel(file) {
-    const ext = (file.name.match(/\.([a-z0-9]{2,5})$/i) || [null, 'FILE'])[1].toUpperCase();
-    const kind = Object.keys(FILE_KINDS).find((k) => FILE_KINDS[k].tag === ext) || 'doc';
-    const kindPrev = FILE_KINDS[kind];
-    FILE_KINDS[kind] = { ...kindPrev, tag: ext.length <= 4 ? ext : kindPrev.tag, name: file.name, meta: humanSize(file.size) };
-    const tex = fileLabelTexture(kind, 512, 640, file.name.length > 20 ? file.name.slice(0, 19) + '…' : file.name, humanSize(file.size));
-    FILE_KINDS[kind] = kindPrev;
-    return tex;
-  }
-
-  function startUpload(file) {
-    if (state.uploading || !file) return;
+  window.addEventListener('dropqr:upload-start', ({ detail }) => {
+    resetExperience();
+    const file = detail.file;
     state.uploading = true;
     state.targetUploadW = 1;
-    state.resetToken += 1;
-    const token = state.resetToken;
-    setProgress(0);
-    if (upName) upName.textContent = file.name;
-    if (upStatus) upStatus.textContent = 'Uploading';
-    if (upOverlay) upOverlay.classList.add('on');
-    if (resOverlay) resOverlay.classList.remove('on');
-    state.resultShown = false;
-    if (dz) { dz.classList.remove('dragging', 'near'); }
-
-    // L'objet héros reçoit l'étiquette du vrai fichier
+    state.progress = 0;
     if (heroFaceMat.map) heroFaceMat.map.dispose();
-    heroFaceMat.map = heroFileLabel(file);
+    heroFaceMat.map = fileLabelTexture('doc', 512, 640, file.name, window.DropQR.formatBytes(file.size));
     heroFaceMat.needsUpdate = true;
     heroFile.visible = true;
     heroFile.position.set(0, -0.12, 1.05);
     heroFile.rotation.set(0, 0, 0);
     heroFile.scale.setScalar(0.001);
     heroRing.material.opacity = 0;
-
-    const form = new FormData();
-    form.append('file', file, file.name || 'fichier');
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/transfers');
-    xhr.responseType = 'json';
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) setProgress(clamp(e.loaded / e.total, 0, 0.985));
-    };
-    xhr.onload = () => {
-      if (token !== state.resetToken) return;
-      if (xhr.status === 201 && xhr.response && xhr.response.shareUrl) {
-        setProgress(1);
-        if (upStatus) upStatus.textContent = 'Uploaded';
-        setTimeout(() => { if (token === state.resetToken) completeUpload(xhr.response); }, reduced ? 120 : 420);
-      } else {
-        const msg = (xhr.response && xhr.response.error) || 'Upload failed. Please try again.';
-        failUpload(msg);
-      }
-    };
-    xhr.onerror = () => failUpload('Network error. Check your connection and retry.');
-    xhr.ontimeout = () => failUpload('Upload timed out. Try again with a stable connection.');
-    xhr.timeout = 20 * 60 * 1000;
-    xhr.send(form);
-  }
-
-  function failUpload(msg) {
-    state.uploading = false;
-    state.targetUploadW = 0;
-    if (upStatus) { upStatus.textContent = msg; }
-    if (upPct) upPct.textContent = '';
-    if (upBar) upBar.style.strokeDashoffset = `${RING_LEN}`;
-    toast(msg);
-    setTimeout(() => {
-      if (upOverlay) upOverlay.classList.remove('on');
-      heroFile.visible = false;
-    }, 2200);
-  }
-
-  function completeUpload(payload) {
-    if (upOverlay) upOverlay.classList.remove('on');
+  });
+  window.addEventListener('dropqr:upload-progress', ({ detail }) => { state.progress = detail.progress; });
+  window.addEventListener('dropqr:upload-complete', ({ detail }) => {
+    if (!state.uploading) return;
     state.morphing = true;
-    // la métamorphose : le fichier devient un QR de particules
     morph.visible = true;
     morphUniforms.uAlpha.value = 1;
     morphUniforms.uMix.value = 0;
     const center = heroFile.position.clone();
     seedMorphFrom(center, 1.5, 1.95);
-    seedMorphTo(payload.shareUrl, center, 2.15);
+    seedMorphTo(detail.shareUrl, center, 2.15);
     state.morphStart = performance.now();
-    state.morphDur = reduced ? 600 : 1900;
-    state.morphPayload = payload;
-  }
-
-  function showResult(payload) {
-    state.resultShown = true;
-    const host = resOverlay;
-    if (!host) return;
-    const pretty = payload.shareUrl.replace(/^https?:\/\//, '');
-    if (resLink) resLink.textContent = pretty;
-    if (resNote) {
-      const mins = Math.max(1, Math.round((payload.secondsRemaining || 900) / 60));
-      resNote.textContent = mins >= 60
-        ? `Link expires in ~${Math.round(mins / 60)} h · code ${payload.code}`
-        : `Link expires in ~${mins} min · code ${payload.code}`;
-    }
-    if (resQrHost) {
-      resQrHost.innerHTML = '';
-      const cv = document.createElement('canvas');
-      cv.width = 440; cv.height = 440;
-      paintQRToCanvas(payload.shareUrl, cv, '#0b0d10', '#ffffff');
-      resQrHost.appendChild(cv);
-    }
-    const copyBtn = document.getElementById('btn-copy');
-    const dlBtn = document.getElementById('btn-download');
-    if (copyBtn) copyBtn.onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(payload.shareUrl);
-        toast('Link copied to clipboard');
-      } catch (_e) {
-        const ta = document.createElement('textarea');
-        ta.value = payload.shareUrl; document.body.appendChild(ta);
-        ta.select(); document.execCommand('copy'); ta.remove();
-        toast('Link copied to clipboard');
-      }
-    };
-    if (dlBtn) dlBtn.onclick = () => {
-      const cv = document.createElement('canvas');
-      cv.width = 1080; cv.height = 1080;
-      paintQRToCanvas(payload.shareUrl, cv, '#0b0d10', '#ffffff');
-      const a = document.createElement('a');
-      a.href = cv.toDataURL('image/png');
-      a.download = `dropqr-${payload.code || 'qr'}.png`;
-      document.body.appendChild(a); a.click(); a.remove();
-      toast('QR code downloaded');
-    };
-    host.classList.add('on');
-  }
-
-  function resetExperience() {
-    state.resetToken += 1;
-    state.uploading = false;
-    state.morphing = false;
-    state.targetUploadW = 0;
-    state.resultShown = false;
-    if (resOverlay) resOverlay.classList.remove('on');
-    if (upOverlay) upOverlay.classList.remove('on');
-    morphUniforms.uMix.value = 0;
-    morphUniforms.uAlpha.value = 0;
-    morph.visible = false;
-    heroFile.visible = false;
-    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
-  }
-  const againBtn = document.getElementById('btn-again');
-  if (againBtn) againBtn.addEventListener('click', resetExperience);
-
-  /* ---- drag & drop fenêtre entière ---- */
-  const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
-  window.addEventListener('dragenter', (e) => {
-    if (!hasFiles(e) || state.uploading) return;
-    e.preventDefault();
-    state.dragDepth += 1;
-    state.dragging = true;
-    if (veil) veil.classList.add('on');
-    if (dz) { dz.classList.add('dragging'); if (dzTitle) dzTitle.textContent = 'Drop your files'; if (dzSub) dzSub.textContent = 'Release to start the transfer'; }
+    state.morphDur = 600;
   });
-  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
-  window.addEventListener('dragleave', (e) => {
-    if (!hasFiles(e)) return;
-    state.dragDepth = Math.max(0, state.dragDepth - 1);
-    if (state.dragDepth === 0) {
-      state.dragging = false;
-      if (veil) veil.classList.remove('on');
-      if (dz) { dz.classList.remove('dragging'); if (dzTitle) dzTitle.textContent = 'Drop anything here'; if (dzSub) dzSub.textContent = 'or choose files'; }
-    }
-  });
-  window.addEventListener('drop', (e) => {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    state.dragDepth = 0; state.dragging = false;
-    if (veil) veil.classList.remove('on');
-    if (dz) { dz.classList.remove('dragging'); if (dzTitle) dzTitle.textContent = 'Drop anything here'; if (dzSub) dzSub.textContent = 'or choose files'; }
-    const files = e.dataTransfer && e.dataTransfer.files;
-    if (files && files.length) {
-      if (files.length > 1) toast('First file used — one transfer at a time.');
-      window.scrollTo({ top: 0, behavior: 'auto' });
-      startUpload(files[0]);
-    }
-  });
+  window.addEventListener('dropqr:upload-reset', resetExperience);
+  window.addEventListener('dropqr:upload-error', resetExperience);
   if (dz) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.hidden = true;
-    dz.appendChild(input);
-    dz.addEventListener('click', () => { if (!state.uploading) input.click(); });
-    dz.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !state.uploading) { e.preventDefault(); input.click(); } });
-    input.addEventListener('change', () => {
-      if (input.files && input.files.length) startUpload(input.files[0]);
-      input.value = '';
-    });
-    // approche du curseur : la scène « respire » vers la zone
-    dz.addEventListener('pointerenter', () => { dz.classList.add('near'); if (dzTitle && !state.dragging) dzTitle.textContent = 'Drop your files'; pointer.nearDz = true; });
-    dz.addEventListener('pointerleave', () => { dz.classList.remove('near'); if (dzTitle && !state.dragging) dzTitle.textContent = 'Drop anything here'; pointer.nearDz = false; });
+    dz.addEventListener('pointerenter', () => { pointer.nearDz = true; });
+    dz.addEventListener('pointerleave', () => { pointer.nearDz = false; });
+    dz.addEventListener('dragenter', () => { state.dragging = true; });
+    for (const event of ['dragleave', 'drop']) dz.addEventListener(event, () => { state.dragging = false; });
   }
-
-  /* CTA nav → retour au portail avec impulsion */
-  const cta = document.getElementById('cta-start');
-  let portalPulse = 0;
-  if (cta) cta.addEventListener('click', (e) => {
-    e.preventDefault();
-    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
-    portalPulse = 1;
-    if (dz) dz.focus({ preventScroll: true });
-  });
-
-  /* ------------------------------------------------ 8. Discord auth (slot) */
-  (async function initAuth() {
-    const slots = [...document.querySelectorAll('[data-discord-auth]')];
-    if (!slots.length) return;
-    let data = null;
-    try {
-      const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
-      if (res.ok) data = await res.json();
-    } catch (_e) { data = null; }
-    slots.forEach((slot) => {
-      slot.innerHTML = '';
-      if (data && data.configured && data.user) {
-        const u = data.user;
-        const chip = document.createElement('span');
-        chip.className = 'discord-chip';
-        const img = document.createElement('img');
-        img.src = u.avatar; img.alt = ''; img.width = 26; img.height = 26;
-        const name = document.createElement('span');
-        name.className = 'discord-chip-name';
-        name.textContent = u.globalName || u.username;
-        const btn = document.createElement('button');
-        btn.className = 'discord-logout';
-        btn.type = 'button'; btn.title = 'Sign out'; btn.setAttribute('aria-label', 'Sign out');
-        btn.textContent = '×';
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (_e) {}
-          window.location.reload();
-        });
-        chip.append(img, name, btn);
-        slot.appendChild(chip);
-      } else if (data && data.configured) {
-        const a = document.createElement('a');
-        a.className = 'discord-auth-btn';
-        a.href = `/api/auth/discord/login?next=${encodeURIComponent('/')}`;
-        a.textContent = 'Sign in with Discord';
-        slot.appendChild(a);
-      }
-    });
-  })();
-
-  /* nav scrolled */
-  function onScrollNav() { nv && nv.classList.toggle('scrolled', window.scrollY > 28); }
-  window.addEventListener('scroll', onScrollNav, { passive: true });
-  onScrollNav();
 
   /* ------------------------------------------------ boucle principale */
   const clock = new THREE.Clock();
@@ -1161,8 +926,23 @@ import * as THREE from '/assets/vendor/three.module.min.js';
     }
   }
 
+  let contextLost = false;
+  canvas.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault();
+    contextLost = true;
+    body.classList.add('no-webgl');
+    body.classList.remove('webgl-ready');
+  });
+  function syncMode() {
+    const active = !contextLost && window.DropQRExperience?.enable3D;
+    body.classList.toggle('no-webgl', !active);
+    body.classList.toggle('webgl-ready', Boolean(active));
+  }
+  window.addEventListener('dropqr:experience-change', syncMode);
   function frame() {
     requestAnimationFrame(frame);
+    // Aucun rendu en arrière-plan, en mode tactile ou avec mouvement réduit.
+    if (document.hidden || contextLost || !window.DropQRExperience?.enable3D) { clock.getDelta(); return; }
     const dt = Math.min(clock.getDelta(), 0.05);
     time += dt;
     computeScroll();
@@ -1385,7 +1165,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
         heroBodyMat.opacity = 1 - sstep(0.05, 0.35, k);
         heroRing.material.opacity = (1 - k) * 0.6;
         if (k >= 1 && !state.resultShown) {
-          showResult(state.morphPayload);
+          showResult();
           heroFile.visible = false;
           heroFaceMat.opacity = 1; heroBodyMat.opacity = 1;
         }
@@ -1450,102 +1230,4 @@ import * as THREE from '/assets/vendor/three.module.min.js';
 
   frame();
 
-  /* ------------------------------------------------ fallback UI sans WebGL */
-  function initFlatUI() {
-    // Le DOM (dropzone, overlays, auth) fonctionne sans 3D : branchements minimaux.
-    const dzEl = document.getElementById('dropzone');
-    const upOv = document.getElementById('upload-overlay');
-    const upNm = document.getElementById('up-name');
-    const upSt = document.getElementById('up-status');
-    const upBr = document.getElementById('up-bar');
-    const upPc = document.getElementById('up-pct');
-    const resOv = document.getElementById('result-overlay');
-    const rl = document.getElementById('result-link');
-    const rn = document.getElementById('result-note');
-    const rq = document.getElementById('result-qr');
-    const LEN = 2 * Math.PI * 58;
-    if (upBr) { upBr.style.strokeDasharray = `${LEN}`; }
-    const setP = (p) => { if (upBr) upBr.style.strokeDashoffset = `${LEN * (1 - p)}`; if (upPc) upPc.textContent = `${Math.round(p * 100)}%`; };
-    let busy = false;
-    function paint2(text, cv, fg, bg) {
-      const go = () => {
-        if (!window.qrcode) return setTimeout(go, 70);
-        try {
-          const q = window.qrcode(0, 'M'); q.addData(text); q.make();
-          const n = q.getModuleCount(), pad = 2, cell = cv.width / (n + pad * 2), x = cv.getContext('2d');
-          x.fillStyle = bg; x.fillRect(0, 0, cv.width, cv.width);
-          x.fillStyle = fg;
-          for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) x.fillRect((c + pad) * cell, (r + pad) * cell, cell + .5, cell + .5);
-        } catch (_e) {}
-      };
-      go();
-    }
-    function doUpload(file) {
-      if (busy || !file) return;
-      busy = true;
-      if (upNm) upNm.textContent = file.name;
-      if (upSt) upSt.textContent = 'Uploading';
-      if (upOv) upOv.classList.add('on');
-      setP(0);
-      const form = new FormData();
-      form.append('file', file, file.name || 'fichier');
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/transfers'); xhr.responseType = 'json';
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) setP(Math.min(e.loaded / e.total, .985)); };
-      xhr.onload = () => {
-        busy = false;
-        if (xhr.status === 201 && xhr.response && xhr.response.shareUrl) {
-          setP(1);
-          if (upOv) upOv.classList.remove('on');
-          const p = xhr.response;
-          if (rl) rl.textContent = p.shareUrl.replace(/^https?:\/\//, '');
-          if (rn) rn.textContent = `code ${p.code}`;
-          if (rq) { rq.innerHTML = ''; const cv = document.createElement('canvas'); cv.width = 440; cv.height = 440; paint2(p.shareUrl, cv, '#0b0d10', '#ffffff'); rq.appendChild(cv); }
-          const copyBtn = document.getElementById('btn-copy');
-          const dlBtn = document.getElementById('btn-download');
-          if (copyBtn) copyBtn.onclick = async () => { try { await navigator.clipboard.writeText(p.shareUrl); } catch (_e) {} };
-          if (dlBtn) dlBtn.onclick = () => { const cv = document.createElement('canvas'); cv.width = 1080; cv.height = 1080; paint2(p.shareUrl, cv, '#0b0d10', '#ffffff'); const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = `dropqr-${p.code}.png`; a.click(); };
-          if (resOv) resOv.classList.add('on');
-        } else {
-          if (upSt) upSt.textContent = (xhr.response && xhr.response.error) || 'Upload failed.';
-          setTimeout(() => upOv && upOv.classList.remove('on'), 2000);
-        }
-      };
-      xhr.onerror = () => { busy = false; if (upSt) upSt.textContent = 'Network error.'; setTimeout(() => upOv && upOv.classList.remove('on'), 2000); };
-      xhr.send(form);
-    }
-    const again = document.getElementById('btn-again');
-    if (again) again.addEventListener('click', () => { resOv && resOv.classList.remove('on'); });
-    if (dzEl) {
-      const input = document.createElement('input');
-      input.type = 'file'; input.hidden = true;
-      dzEl.appendChild(input);
-      dzEl.addEventListener('click', () => input.click());
-      input.addEventListener('change', () => { if (input.files.length) doUpload(input.files[0]); input.value = ''; });
-    }
-    window.addEventListener('dragover', (e) => e.preventDefault());
-    window.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const f = e.dataTransfer && e.dataTransfer.files;
-      if (f && f.length) doUpload(f[0]);
-    });
-    // auth slot (identique, version légère)
-    (async () => {
-      const slots = [...document.querySelectorAll('[data-discord-auth]')];
-      if (!slots.length) return;
-      try {
-        const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
-        const data = res.ok ? await res.json() : null;
-        slots.forEach((slot) => {
-          if (data && data.configured && data.user) {
-            slot.innerHTML = `<span class="discord-chip"><img src="${data.user.avatar}" width="26" height="26" alt=""><span class="discord-chip-name"></span><button class="discord-logout" type="button" aria-label="Sign out">×</button></span>`;
-            slot.querySelector('.discord-chip-name').textContent = data.user.globalName || data.user.username;
-            slot.querySelector('.discord-logout').addEventListener('click', async () => { try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (_e) {} window.location.reload(); });
-          } else if (data && data.configured) {
-            slot.innerHTML = `<a class="discord-auth-btn" href="/api/auth/discord/login?next=/">Sign in with Discord</a>`;
-          }
-        });
-      } catch (_e) {}
-    })();
-  }
-})();
+}

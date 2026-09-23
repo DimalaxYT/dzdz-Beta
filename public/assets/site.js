@@ -1,351 +1,194 @@
-'use strict';
+/* Navigation et utilitaires partagés. Aucune route de fichier n'est préchargée. */
+(() => {
+  'use strict';
+  let configPromise = null;
+  window.DropQR = {
+    async getConfig() {
+      if (!configPromise) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        configPromise = fetch('/api/config', { cache: 'no-store', signal: controller.signal })
+          .then(async (response) => {
+            if (!response.ok) throw new Error('Serveur de transfert injoignable. Réessayez.');
+            const config = await response.json();
+            if (config.app !== 'DropQR') throw new Error('Serveur de transfert invalide.');
+            return config;
+          }).catch((error) => { configPromise = null; throw error; })
+          .finally(() => clearTimeout(timeout));
+      }
+      return configPromise;
+    },
+    formatBytes(bytes) {
+      let size = Number(bytes) || 0;
+      const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
+      let i = 0;
+      while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+      return `${i === 0 ? size : size.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ${units[i]}`;
+    },
+    formatDate(value) {
+      return new Date(value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+    },
+    fileType(mime, name) {
+      const extension = String(name || '').split('.');
+      const ext = extension.length > 1 ? extension.pop().slice(0, 12).toUpperCase() : '';
+      const category = String(mime || '').split('/')[0];
+      const label = { image: 'Image', video: 'Vidéo', audio: 'Audio', text: 'Texte' }[category] || 'Fichier';
+      return ext ? `${label} ${ext}` : label;
+    },
+    async copyText(text) {
+      try {
+        if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+      } catch (_error) { /* Iframe / navigateur non sécurisé : repli sans faux succès. */ }
+      const field = document.createElement('textarea');
+      const previous = document.activeElement;
+      field.value = text;
+      field.setAttribute('readonly', '');
+      field.className = 'sr-only';
+      document.body.appendChild(field);
+      field.select();
+      let copied = false;
+      try { copied = document.execCommand('copy'); } catch (_error) {}
+      field.remove();
+      previous?.focus({ preventScroll: true });
+      return copied;
+    }
+  };
 
-// Navigation PJAX + comportements globaux du site.
-//
-// Règles importantes corrigées ici:
-// - on ne précharge QUE des pages statiques sûres (liste blanche). Un lien
-//   /download, /view ou /t/:id ne doit JAMAIS être préchargé: une requête
-//   préventive téléchargerait le fichier et pourrait déclencher sa suppression
-//   avant même que l'utilisateur clique.
-// - le cache PJAX stocke le HTML brut, pas le Document parsé: les nœuds d'un
-//   Document caché étaient déplacés dans la page courante, ce qui cassait une
-//   seconde visite de la même page.
-// - chaque initialisation nettoie les écouteurs globaux de la précédente via
-//   un AbortController: plus de fuite d'écouteurs scroll/resize.
+  let lifecycle = null;
+  function initSite() {
+    lifecycle?.abort();
+    lifecycle = new AbortController();
+    const { signal } = lifecycle;
+    const nav = document.getElementById('nv');
+    const menu = nav?.querySelector('.nv-menu');
+    const scrollNav = () => nav?.classList.toggle('scrolled', window.scrollY > 20);
+    window.addEventListener('scroll', scrollNav, { passive: true, signal });
+    scrollNav();
+    const closeMenu = (focus = false) => {
+      if (!menu?.open) return;
+      menu.open = false;
+      if (focus) menu.querySelector('summary').focus();
+    };
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(true); }, { signal });
+    document.addEventListener('click', (event) => {
+      if (menu?.open && !menu.contains(event.target)) closeMenu();
+      if (event.target.closest('.nv-menu a')) closeMenu();
+    }, { signal });
 
-const pjaxCache = new Map(); // pathname+search -> { text, storedAt }
-const PJAX_CACHE_TTL_MS = 60 * 1000;
-const pjaxParser = window.DOMParser ? new DOMParser() : null;
+    const contacts = [...document.querySelectorAll('[data-discord-contact]')];
+    const sizes = [...document.querySelectorAll('[data-max-file-size]')];
+    if (contacts.length || sizes.length) window.DropQR.getConfig().then((config) => {
+      if (signal.aborted) return;
+      sizes.forEach((node) => { node.textContent = config.maxFileSizeHuman || 'selon le serveur'; });
+      if (config.discordContactUrl && /^https:\/\//i.test(config.discordContactUrl)) contacts.forEach((link) => { link.href = config.discordContactUrl; link.hidden = false; });
+    }).catch(() => {});
 
-// Seules ces pages peuvent être préchargées en arrière-plan.
-const PREFETCH_WHITELIST = new Set(['/', '/index.html', '/upload', '/receive', '/help', '/mentions', '/dashboard']);
-
-const isSafePrefetchPath = (pathname) => PREFETCH_WHITELIST.has(pathname);
-
-let siteTeardownController = null;
-let siteObserver = null;
-
-const initSite = () => {
-  // Nettoie les écouteurs enregistrés lors de la page précédente.
-  if (siteTeardownController) siteTeardownController.abort();
-  siteTeardownController = new AbortController();
-  const { signal } = siteTeardownController;
-  if (siteObserver) {
-    siteObserver.disconnect();
-    siteObserver = null;
-  }
-
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const root = document.documentElement;
-
-  const contactLinks = [...document.querySelectorAll('[data-discord-contact]')];
-  const authSlots = [...document.querySelectorAll('[data-discord-auth]')];
-  const maxSizeLabels = [...document.querySelectorAll('[data-max-file-size]')];
-
-  // Bouton / état "Se connecter avec Discord" dans la barre de navigation.
-  if (authSlots.length) {
-    fetch('/api/auth/me', { cache: 'no-store', credentials: 'same-origin' })
+    const slots = document.querySelectorAll('[data-discord-auth]');
+    if (slots.length) fetch('/api/auth/me', { cache: 'no-store', credentials: 'same-origin', signal })
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
-        if (!payload || signal.aborted || !payload.configured) return;
-        authSlots.forEach((slot) => {
-          slot.textContent = '';
+        if (!payload?.configured || signal.aborted) return;
+        slots.forEach((slot) => {
+          slot.replaceChildren();
           if (payload.user) {
-            const chip = document.createElement('span');
-            chip.className = 'discord-chip';
-
+            const chip = document.createElement('span'); chip.className = 'discord-chip';
             const avatar = document.createElement('img');
-            avatar.src = payload.user.avatar;
-            avatar.alt = '';
-            avatar.width = 26;
-            avatar.height = 26;
-            avatar.referrerPolicy = 'no-referrer';
-
-            const name = document.createElement('span');
-            name.className = 'discord-chip-name';
-            name.textContent = payload.user.globalName || payload.user.username;
-            name.title = `Connecté avec Discord: @${payload.user.username}`;
-
-            const logout = document.createElement('button');
-            logout.type = 'button';
-            logout.className = 'discord-logout';
-            logout.textContent = '×';
-            logout.title = 'Se déconnecter';
-            logout.setAttribute('aria-label', 'Se déconnecter de Discord');
+            avatar.src = payload.user.avatar; avatar.alt = ''; avatar.width = 28; avatar.height = 28; avatar.referrerPolicy = 'no-referrer';
+            const name = document.createElement('span'); name.className = 'discord-chip-name'; name.textContent = payload.user.globalName || payload.user.username;
+            const logout = document.createElement('button'); logout.type = 'button'; logout.className = 'discord-logout'; logout.textContent = '×'; logout.setAttribute('aria-label', 'Se déconnecter de Discord');
             logout.addEventListener('click', async () => {
               logout.disabled = true;
-              try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); }
-              catch (_error) {}
-              window.location.reload();
-            });
-
-            chip.append(avatar, name, logout);
-            slot.appendChild(chip);
+              try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); window.location.reload(); }
+              catch (_error) { logout.disabled = false; logout.title = 'Connexion interrompue. Réessayez.'; }
+            }, { signal });
+            chip.append(avatar, name, logout); slot.append(chip);
           } else {
-            const link = document.createElement('a');
-            link.className = 'discord-auth-btn';
-            link.href = `/api/auth/discord/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
-            link.textContent = 'Discord';
-            link.title = 'Se connecter avec Discord (pour que le staff sache qui envoie)';
-            slot.appendChild(link);
+            const link = document.createElement('a'); link.className = 'discord-auth-btn';
+            link.href = `/api/auth/discord/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+            link.textContent = 'Discord'; slot.append(link);
           }
         });
-      })
-      .catch(() => {});
+      }).catch(() => {});
   }
 
-  if (contactLinks.length || maxSizeLabels.length) {
-    fetch('/api/config', { cache: 'no-store' })
-      .then((response) => response.ok ? response.json() : null)
-      .then((config) => {
-        if (!config || signal.aborted) return;
-        if (config.discordContactUrl) {
-          contactLinks.forEach((link) => {
-            link.href = config.discordContactUrl;
-            link.hidden = false;
-            link.textContent = 'Discord';
-          });
-        }
-        if (config.maxFileSizeHuman) {
-          maxSizeLabels.forEach((label) => { label.textContent = config.maxFileSizeHuman; });
-        }
-      })
-      .catch(() => {});
-  }
-
-  const parallaxItems = [...document.querySelectorAll('[data-parallax]')];
-  const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .doc-section .card')];
-
-  if (!reducedMotion) {
-    root.classList.add('motion-ready');
-    const firstViewport = window.innerHeight * 0.92;
-    revealItems.forEach((item, index) => {
-      item.classList.add('reveal-item');
-      item.style.setProperty('--reveal-delay', `${Math.min(index, 8) * 35}ms`);
-      if (item.getBoundingClientRect().top < firstViewport) item.classList.add('is-visible');
-    });
-  } else {
-    revealItems.forEach((item) => item.classList.add('is-visible'));
-  }
-
-  if ('IntersectionObserver' in window && !reducedMotion) {
-    siteObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-visible');
-          siteObserver.unobserve(entry.target);
-        }
-      });
-    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-    revealItems.forEach((item) => siteObserver.observe(item));
-  } else {
-    revealItems.forEach((item) => item.classList.add('is-visible'));
-  }
-
-  const prefetched = new Set();
-  const internalLinks = [...document.querySelectorAll('a[href]')]
-    .map((link) => {
-      let url = null;
-      try { url = new URL(link.getAttribute('href'), window.location.href); } catch (_error) { return null; }
-      return { link, url };
-    })
-    .filter((entry) => entry
-      && entry.url.origin === window.location.origin
-      && !entry.link.target
-      && !entry.link.hasAttribute('download')
-      && isSafePrefetchPath(entry.url.pathname))
-    .filter((entry, index, links) => links.findIndex((other) => other.url.href === entry.url.href) === index);
-
-  const prefetchPage = async (url) => {
-    const key = url.pathname + url.search;
-    if (prefetched.has(key)) return;
-    prefetched.add(key);
-    if (!pjaxParser || !isSafePrefetchPath(url.pathname)) return;
-    try {
-      const res = await fetch(url.href, { credentials: 'same-origin', signal });
-      if (res.ok && !signal.aborted) {
-        const text = await res.text();
-        pjaxCache.set(key, { text, storedAt: Date.now() });
-      }
-    } catch (_error) {}
-  };
-
-  internalLinks.forEach(({ link, url }) => {
-    link.addEventListener('pointerenter', () => prefetchPage(url), { passive: true, signal });
+  initSite();
+  window.addEventListener('pjax:load', initSite);
+  window.addEventListener('beforeunload', (event) => {
+    if (!window.DropQRTransferBusy) return;
+    event.preventDefault(); event.returnValue = '';
   });
 
-  const warmNavigation = () => {
-    if (signal.aborted) return;
-    internalLinks.forEach(({ url }, index) => {
-      window.setTimeout(() => prefetchPage(url), index * 90);
+  // PJAX entre pages statiques uniquement. La landing 3D et les pages de
+  // réception publiques utilisent une navigation native (cycle de vie complet).
+  const paths = new Set(['/upload', '/receive', '/help', '/mentions', '/dashboard']);
+  const scripts = new Map([...document.querySelectorAll('script[src]')].map((node) => [new URL(node.src).pathname, Promise.resolve()]));
+  let pending = null;
+  const loadScript = (src) => {
+    const url = new URL(src, location.href);
+    if (scripts.has(url.pathname)) return scripts.get(url.pathname);
+    const promise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url.href;
+      script.onload = resolve; script.onerror = reject;
+      document.body.append(script);
     });
-  };
-  if ('requestIdleCallback' in window) window.requestIdleCallback(warmNavigation, { timeout: 900 });
-  else window.setTimeout(warmNavigation, 250);
-
-  if (!reducedMotion && parallaxItems.length) {
-    let frame = null;
-    const updateParallax = () => {
-      frame = null;
-      if (signal.aborted) return;
-      const viewport = window.innerHeight || 1;
-      parallaxItems.forEach((item) => {
-        const speed = Number(item.dataset.speed || -0.08);
-        const rect = item.getBoundingClientRect();
-        const previous = parseFloat(item.style.getPropertyValue('--parallax-y')) || 0;
-        const layoutTop = rect.top - previous;
-        const rawDistance = (layoutTop + rect.height / 2 - viewport / 2) * speed;
-        const distance = Math.max(-72, Math.min(72, rawDistance));
-        item.style.setProperty('--parallax-y', `${distance.toFixed(2)}px`);
-      });
-    };
-
-    const requestParallax = () => {
-      if (frame === null) frame = window.requestAnimationFrame(updateParallax);
-    };
-
-    window.addEventListener('scroll', requestParallax, { passive: true, signal });
-    window.addEventListener('resize', requestParallax, { passive: true, signal });
-    window.addEventListener('pageshow', requestParallax, { passive: true, signal });
-    requestParallax();
-  }
-};
-
-initSite();
-window.addEventListener('pjax:load', initSite);
-
-(() => {
-  if (!pjaxParser) return;
-
-  let isNavigating = false;
-
-  const readCached = (key) => {
-    const entry = pjaxCache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.storedAt > PJAX_CACHE_TTL_MS) {
-      pjaxCache.delete(key);
-      return null;
-    }
-    return entry.text;
+    scripts.set(url.pathname, promise);
+    return promise;
   };
 
-  const fetchPage = async (url) => {
-    const key = url.pathname + url.search;
-    const cached = readCached(key);
-    if (cached !== null) return cached;
-    try {
-      const res = await fetch(url.href, { headers: { 'X-PJAX': 'true' } });
-      if (!res.ok) throw new Error('Page not found');
-      const text = await res.text();
-      pjaxCache.set(key, { text, storedAt: Date.now() });
-      return text;
-    } catch (e) {
-      console.error('PJAX fetch error', e);
-      return null;
-    }
-  };
-
-  const navigate = async (url) => {
-    if (isNavigating) return;
-    isNavigating = true;
-
+  async function navigate(url, push = true) {
+    pending?.abort();
+    const request = new AbortController();
+    pending = request;
     document.documentElement.classList.add('pjax-loading');
-
-    const html = await fetchPage(url);
-    if (html === null) {
-      window.location.href = url.href; // Fallback: chargement classique.
-      return;
-    }
-
-    // On parse à chaque navigation: les nœuds cachés ne sont jamais réutilisés.
-    const doc = pjaxParser.parseFromString(html, 'text/html');
-    const shell = document.querySelector('.shell');
-    const main = document.querySelector('main');
-    const newMain = doc.querySelector('main');
-
-    if (shell && main && newMain) {
-      document.body.className = doc.body.className;
+    try {
+      const response = await fetch(url.href, { headers: { 'X-PJAX': 'true' }, signal: request.signal });
+      if (!response.ok) throw new Error('Navigation indisponible');
+      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const shell = doc.querySelector('.shell');
+      if (!shell || !doc.body.hasAttribute('data-static-page')) throw new Error('Page non statique');
+      if (request.signal.aborted) return;
+      window.dispatchEvent(new Event('pjax:before'));
+      lifecycle?.abort();
+      document.querySelector('.shell').replaceWith(shell);
+      document.querySelector('header.nv').replaceWith(doc.querySelector('header.nv'));
+      document.querySelector('footer.site-footer').replaceWith(doc.querySelector('footer.site-footer'));
       document.title = doc.title;
-      shell.replaceChild(newMain, main);
-
-      const newNav = doc.querySelector('.topbar');
-      const oldNav = document.querySelector('.topbar');
-      if (newNav && oldNav) {
-        oldNav.innerHTML = newNav.innerHTML;
+      document.body.className = doc.body.className;
+      if (push) history.pushState({ dropqr: true }, '', url.href);
+      // Chargement séquentiel : store.js doit exister avant dashboard/upload.
+      for (const script of doc.querySelectorAll('script[src]')) {
+        await loadScript(script.getAttribute('src'));
+        if (request.signal.aborted) return;
       }
-
-      const newFooter = doc.querySelector('footer');
-      const oldFooter = document.querySelector('footer');
-      if (newFooter && oldFooter) {
-        oldFooter.innerHTML = newFooter.innerHTML;
-      }
-
-      const knownScripts = new Set(Array.from(document.querySelectorAll('script[src]')).map((s) => s.src.split('?')[0]));
-      const newScripts = Array.from(doc.querySelectorAll('script[src]'));
-
-      for (const s of newScripts) {
-        const srcBase = s.src.split('?')[0];
-        if (!knownScripts.has(srcBase)) {
-          const newScript = document.createElement('script');
-          newScript.src = s.src;
-          document.body.appendChild(newScript);
-          knownScripts.add(srcBase);
-        }
-      }
-
-      // Les scripts de page viennent d'être injectés: leur init s'exécute à
-      // l'insertion, puis pjax:load relance initSite + les inits (protégées
-      // contre le double appel par chaque script de page).
       window.dispatchEvent(new Event('pjax:load'));
-    } else {
-      window.location.href = url.href;
-      return;
+      document.getElementById('main')?.focus({ preventScroll: true });
+      if (url.hash) document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView();
+      else window.scrollTo({ top: 0, behavior: 'instant' });
+    } catch (error) {
+      if (error.name !== 'AbortError') window.location.assign(url.href);
+    } finally {
+      if (pending === request) { pending = null; document.documentElement.classList.remove('pjax-loading'); }
     }
+  }
 
-    document.documentElement.classList.remove('pjax-loading');
-    isNavigating = false;
-  };
-
-
-  document.addEventListener('click', (e) => {
-    const a = e.target.closest('a');
-    if (!a || !a.href || a.target || a.hasAttribute('download')) return;
-
-    const url = new URL(a.href);
-    if (url.origin !== window.location.origin) return;
-    if (url.pathname.startsWith('/api') || url.pathname.startsWith('/download') || url.pathname.startsWith('/view')) return;
-
-    // Handle hash links on the SAME page
-    if (url.pathname === window.location.pathname && url.hash) {
-      // Allow default browser behavior for anchor jumps
-      return;
+  document.addEventListener('click', (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest('a[href]');
+    if (!link || link.target || link.hasAttribute('download')) return;
+    const url = new URL(link.href);
+    if (url.origin !== location.origin || !document.body.hasAttribute('data-static-page') || !paths.has(url.pathname)) return;
+    if (url.pathname === location.pathname && url.search === location.search) return;
+    if (window.DropQRTransferBusy) {
+      event.preventDefault();
+      if (!window.confirm('Quitter cette page et interrompre l’envoi ?')) return;
+      window.DropQRAbortTransfer?.();
     }
-
-    e.preventDefault();
-    if (url.pathname !== window.location.pathname || url.search !== window.location.search) {
-      history.pushState({}, '', url.href);
-      navigate(url).then(() => {
-        if (url.hash) {
-          const target = document.getElementById(url.hash.substring(1));
-          if (target) target.scrollIntoView();
-        } else {
-          window.scrollTo(0, 0);
-        }
-      });
-    } else {
-      window.scrollTo(0, 0);
-    }
+    event.preventDefault();
+    navigate(url);
   });
-
   window.addEventListener('popstate', () => {
-    navigate(new URL(window.location.href)).then(() => {
-      const url = new URL(window.location.href);
-      if (url.hash) {
-        const target = document.getElementById(url.hash.substring(1));
-        if (target) target.scrollIntoView();
-      } else {
-        window.scrollTo(0, 0);
-      }
-    });
+    if (document.body.hasAttribute('data-static-page') && paths.has(location.pathname)) navigate(new URL(location.href), false);
+    else window.location.reload();
   });
 })();

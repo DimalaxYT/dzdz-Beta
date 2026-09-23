@@ -3,41 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
-  <title>Mentions — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark light">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
+  <title>Mentions et confidentialité — DropQR</title>
+  <script src="/assets/experience.js?v=4"></script>
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
 </head>
-<body>
-  <div class="shell">
-    <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a></div>
-    <div class="nav-auth" data-discord-auth></div>
+<body class="page-sub" data-static-page>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="nv" id="nv">
+    <a class="nv-brand" href="/" aria-label="DropQR, accueil"><img class="nv-logo" src="/assets/logo.svg?v=3" alt="" width="30" height="30"><span>DropQR</span></a>
+    <nav class="nv-links" aria-label="Navigation principale">
+      <a href="/">Accueil</a>
+      <a href="/dashboard">Transferts</a>
+      <a href="/help">Comment ça marche</a>
     </nav>
-
-    <header class="hero compact page-heading">
-      <div class="hero-main"><div class="page-code">LEGAL / PRIVACY</div><h1>Mentions et confidentialité.</h1><p class="lead">Les informations essentielles sur l'éditeur, le fonctionnement de DropQR et les données nécessaires au transfert.</p></div>
-      <div class="capacity-board" data-parallax data-speed="-.07" aria-label="Résumé légal"><div class="capacity-item"><strong>0</strong><span>compte requis</span></div><div class="capacity-item"><strong>TTL</strong><span>durée limitée</span></div><div class="capacity-item"><strong>NO ADS</strong><span>pas de publicité</span></div></div>
-    </header>
-
-    <main class="docs-grid legal-content">
-      <nav class="docs-nav" aria-label="Sommaire légal"><a href="#editeur">Éditeur</a><a href="#service">Service</a><a href="#donnees">Données</a><a href="#confidentialite">Confidentialité</a><a href="#droits">Droits</a></nav>
-      <div class="doc-section">
-        <section id="editeur" class="card"><h2>Éditeur du site</h2><p><strong>Nom ou pseudonyme :</strong> ano1by.</p><p><strong>Contact :</strong> Discord — ano1by.</p><p>Le contact principal du site est disponible via Discord. Pour les demandes liées à un transfert, indique si possible le code concerné sans partager de clé privée.</p></section>
-
-        <section id="service" class="card"><h2>Fonctionnement du service</h2><p>DropQR permet de transférer temporairement un fichier entre deux appareils. Aucun compte n'est nécessaire. Un code court et un lien sont générés pour accéder au fichier.</p><p>Les fichiers sont supprimés automatiquement à l'expiration du délai choisi ou après le premier téléchargement lorsque cette option est activée. Un redémarrage ou un redéploiement de l'hébergeur peut également interrompre un transfert.</p><p>Lorsque la rotation Discord est activée, le bot crée une invitation classique pour le salon de contact et le lien affiché dans le footer est actualisé automatiquement. Le contact humain reste <strong>ano1by</strong> sur Discord.</p></section>
-
-        <section id="donnees" class="card"><h2>Données traitées</h2><p>Pour assurer le transfert, DropQR traite temporairement le nom du fichier, son type, sa taille, sa date de création, sa date d'expiration et le nombre de téléchargements.</p><p>Le serveur conserve uniquement le hash de la clé de suppression. La clé elle-même est remise à la personne qui crée le transfert.</p><p>Si Discord est configuré, le code, le lien, le QR code, le nom, la taille et l'expiration sont envoyés au webhook Discord choisi par l'éditeur. Le message Discord est programmé pour être supprimé avec le transfert.</p></section>
-
-        <section id="confidentialite" class="card"><h2>Confidentialité</h2><p>DropQR ne vend pas les fichiers et n'utilise pas les transferts pour faire de la publicité. Les fichiers sont stockés temporairement sur l'hébergement configuré par l'éditeur.</p><p>Cette version ne crée pas de compte et ne conserve plus d'historique local des transferts dans le navigateur. Les anciennes entrées locales sont supprimées automatiquement lors de l'ouverture du site.</p><p>Le serveur ne pose pas volontairement de cookie de suivi. L'hébergeur, le reverse proxy ou la plateforme de preview peuvent toutefois produire leurs propres journaux techniques, notamment pour la sécurité et les statistiques d'infrastructure.</p></section>
-
-        <section id="droits" class="card"><h2>Demandes et contact</h2><p>Pour toute question concernant un fichier, une suppression ou une demande relative aux données, contacte l'éditeur à l'adresse indiquée dans la section Éditeur.</p><p>Un fichier temporaire peut normalement être supprimé avec le bouton ou la clé de suppression fournie au moment de sa création. Ne partage jamais une clé privée ou un lien de transfert avec une personne non autorisée.</p><p class="legal-note"><strong>Important :</strong> cette page est un modèle informatif. Les coordonnées de l'éditeur, l'hébergeur exact et les obligations légales applicables doivent être vérifiés et complétés avant une utilisation publique professionnelle.</p></section>
-      </div>
+    <div class="nv-right">
+      <nav class="nv-actions" aria-label="Partager un fichier">
+        <a class="nv-action nv-send" href="/upload"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer</span></a>
+        <a class="nv-action nv-receive" href="/receive"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Recevoir</span></a>
+      </nav>
+      <details class="nv-menu">
+        <summary aria-label="Menu de navigation"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#menu"></use></svg></summary>
+        <div class="nv-menu-panel">
+          <p class="menu-label">À portée de main</p>
+          <nav aria-label="Menu complémentaire">
+            <a href="/">Accueil <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/dashboard">Mes transferts <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/help">Aide <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/mentions" aria-current="page">Mentions et confidentialité <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+          </nav>
+          <div class="nav-auth" data-discord-auth></div>
+        </div>
+      </details>
+    </div>
+  </header>
+  <div class="shell">
+    <main id="main" tabindex="-1">
+      <section class="page-hero"><div><p class="kicker">Transparence / Confidentialité</p><h1>Vos fichiers.<br><span class="thin">Les règles du jeu.</span></h1><p class="lead">Ce que DropQR conserve, ce qu’il partage et comment garder le contrôle.</p></div><div class="capacity-board" aria-label="Résumé"><div class="capacity-item"><strong>0</strong><span>compte obligatoire</span></div><div class="capacity-item"><strong>TTL</strong><span>durée limitée</span></div><div class="capacity-item"><strong>Local</strong><span>historique du navigateur</span></div></div></section>
+      <div class="docs-grid"><nav class="docs-nav" aria-label="Sommaire légal"><a href="#editeur">Éditeur</a><a href="#service">Service</a><a href="#donnees">Données</a><a href="#confidentialite">Confidentialité</a><a href="#droits">Vos demandes</a></nav><div class="doc-section">
+        <section id="editeur" class="card"><h2>Éditeur du site</h2><p><strong>Nom ou pseudonyme :</strong> ano1by.<br><strong>Contact :</strong> Discord — ano1by.</p><p>Pour une demande liée à un transfert, indiquez si possible le code concerné sans transmettre de clé de suppression.</p></section>
+        <section id="service" class="card"><h2>Un service de passage.</h2><p>DropQR permet de transférer temporairement un fichier entre appareils. Aucun compte n’est obligatoire. Un lien, un QR et un code court permettent de retrouver le fichier.</p><p>Les fichiers sont supprimés à l’expiration choisie ou après le premier téléchargement si cette option est activée. Un redémarrage ou un redéploiement de l’hébergeur peut aussi interrompre un transfert. La limite de taille dépend de la configuration et de l’hébergement.</p></section>
+        <section id="donnees" class="card"><h2>Données traitées</h2><p>Le serveur traite le fichier, son nom, son type, sa taille, ses dates de création et d’expiration et le nombre de téléchargements. Il conserve un hash de la clé de suppression, pas la clé en clair.</p><p>Lorsque les notifications Discord sont configurées, le staff reçoit le code, le lien, le QR, le nom, la taille et l’expiration. Il peut donc accéder au fichier avec ce lien. La suppression du message Discord est programmée avec celle du transfert et dépend de la disponibilité de Discord.</p><p>La connexion Discord est facultative. Si vous l’utilisez, votre identifiant, votre nom, votre avatar et des compteurs d’envoi peuvent être conservés côté serveur ; votre identité peut accompagner les notifications au staff. Des cookies techniques servent à l’authentification.</p></section>
+        <section id="confidentialite" class="card"><h2>Confidentialité et stockage local</h2><p>Les fichiers sont conservés temporairement sur l’hébergement de DropQR. Le service ne propose pas de chiffrement de bout en bout. Toute personne disposant d’un lien ou d’un code valide peut accéder au fichier.</p><p><strong>Dans ce navigateur :</strong> les transferts créés et leurs clés de suppression sont enregistrés dans le stockage local pour la page Mes transferts. Vous pouvez effacer cette liste. La clé est transmise au serveur uniquement pour demander une suppression.</p><p>DropQR ne vend pas les fichiers et ne les utilise pas à des fins publicitaires. L’hébergeur et les intermédiaires techniques peuvent conserver leurs propres journaux. La connexion Discord utilise des cookies techniques, pas des cookies publicitaires.</p></section>
+        <section id="droits" class="card"><h2>Demandes et contact</h2><p>Pour une suppression ou une demande relative aux données, contactez l’éditeur indiqué ci-dessus. Vous pouvez normalement supprimer votre fichier directement avec le bouton fourni après l’envoi ou depuis Mes transferts.</p><p>Ne partagez jamais de clé de suppression. Réservez le lien et le code aux destinataires autorisés.</p><p class="legal-note"><strong>À compléter avant une utilisation publique professionnelle :</strong> les coordonnées légales de l’éditeur, l’identité de l’hébergeur et les informations exigées par la réglementation applicable. Cette page est un modèle informatif.</p></section>
+      </div></div>
     </main>
-
-    <footer><span><strong>DropQR</strong> / mentions légales et confidentialité</span><span><a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a></span><span><a class="footer-action" href="/">Retour à l'accueil</a></span></footer>
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
+  <footer class="site-footer">
+    <a class="foot-brand" href="/">DropQR<span class="signal-square" aria-hidden="true"></span></a>
+    <nav aria-label="Application">
+      <a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a><a href="/mentions">Mentions légales</a>
+      <a data-discord-contact href="#" hidden>Discord</a>
+    </nav>
+    <span class="colophon">Un fichier. Un lien. C’est partagé.</span>
+  </footer>
+  <script src="/assets/site.js?v=16" defer></script>
+
 </body>
 </html>

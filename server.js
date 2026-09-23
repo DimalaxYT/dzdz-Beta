@@ -8,6 +8,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const { pipeline } = require('stream/promises');
 const path = require('path');
+const layout = require('./lib/layout');
 
 const app = express();
 const trustProxyRaw = String(process.env.TRUST_PROXY || '1').trim().toLowerCase();
@@ -106,7 +107,7 @@ const DISCORD_HEARTBEAT_ENABLED = DISCORD_NOTIFY && Boolean(DISCORD_WEBHOOK_URL)
 const DISCORD_HEARTBEAT_HOURS = Math.min(168, Math.max(1, Math.floor(parsePositiveEnvNumber('DISCORD_HEARTBEAT_HOURS', 24))));
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const STORAGE_DIR = path.join(__dirname, 'storage');
+const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || path.join(__dirname, 'storage'));
 const FILES_DIR = path.join(STORAGE_DIR, 'files');
 const CHUNKS_DIR = path.join(STORAGE_DIR, 'chunks');
 const DB_PATH = path.join(STORAGE_DIR, 'db.json');
@@ -258,8 +259,9 @@ function getBaseUrl(req) {
 }
 
 function getReceivePath(meta) {
-  if (meta.code) return `/receive?code=${encodeURIComponent(meta.code)}`;
-  return `/t/${encodeURIComponent(meta.id)}`;
+  // Page dédiée au destinataire, rendue côté serveur et utilisable sans JavaScript.
+  // Les anciens liens /receive?code=, /c/:code et /t/:id restent compatibles.
+  return `/d/${encodeURIComponent(meta.id)}`;
 }
 
 function isSandboxPreview(req) {
@@ -384,10 +386,17 @@ async function buildTransferResponse(req, meta, deleteKey) {
   const previewUrl = `${baseUrl}/view/${encodeURIComponent(meta.id)}`;
   const qrDataUrl = await QRCode.toDataURL(shareUrl, {
     errorCorrectionLevel: 'M',
-    margin: 2,
+    margin: 4,
     width: 420,
-    color: { dark: '#020617', light: '#ffffff' }
+    color: { dark: '#0f1a14', light: '#ffffff' }
   });
+  // SVG fonctionnel, avec une zone calme de quatre modules. Le PNG est conservé
+  // pour les anciennes interfaces et les notifications Discord.
+  const qrSvg = await QRCode.toString(shareUrl, {
+    type: 'svg', errorCorrectionLevel: 'M', margin: 4,
+    color: { dark: '#0f1a14', light: '#ffffff' }
+  });
+  const qrSvgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrSvg)}`;
 
   return {
     id: meta.id,
@@ -407,6 +416,7 @@ async function buildTransferResponse(req, meta, deleteKey) {
     previewUrl,
     canPreview: isVideoMime(mimeType),
     qrDataUrl,
+    qrSvgDataUrl,
     discordConfigured: Boolean(DISCORD_WEBHOOK_URL && DISCORD_NOTIFY),
     sandboxWarning: sandboxWarningText(req)
   };
@@ -1059,14 +1069,14 @@ app.use((req, res, next) => {
   res.setHeader('Expires', '0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), web-share=(self)');
   // L'interface n'utilise que des scripts/feuilles same-origin et des QR en data: URL.
   // Les attributs style="..." du HTML imposent 'unsafe-inline' pour les styles.
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://cdn.discordapp.com",
+    "img-src 'self' data: blob: https://cdn.discordapp.com",
     "media-src 'self' blob:",
     "connect-src 'self'",
     "font-src 'self'",
@@ -1101,7 +1111,8 @@ function sendPage(res, fileName) {
   return res.sendFile(path.join(PUBLIC_DIR, fileName));
 }
 
-app.get('/', (_req, res) => sendPage(res, 'home.html'));
+app.get(['/', '/index.html'], (_req, res) => sendPage(res, 'home.html'));
+app.get('/api-not-available.html', (_req, res) => sendPage(res, 'api-not-available.html'));
 app.get('/upload', (_req, res) => sendPage(res, 'upload.html'));
 app.get('/dashboard', (_req, res) => sendPage(res, 'dashboard.html'));
 app.get('/receive', (_req, res) => sendPage(res, 'receive.html'));
@@ -1691,6 +1702,7 @@ async function notifyDiscordNewUser(user) {
 
 app.get('/c/:code', showSharePageByCode);
 app.get('/code/:code', showSharePageByCode);
+app.get('/d/:id', showSharePage);
 app.get('/t/:id', showSharePage);
 app.get('/share/:id', showSharePage); // compatibilité ancien QR
 
@@ -1860,70 +1872,42 @@ function publicTransferPayload(req, meta) {
 
 function renderSharePage(req, meta) {
   const payload = publicTransferPayload(req, meta);
-  const expiresAt = new Date(meta.expiresAt).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
-  return `<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
-  <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
-</head>
-<body>
-  <div class="shell share-shell">
-    <main class="share-page card">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="page-code">PUBLIC / DOWNLOAD</div>
-      <h1>Le fichier est prêt.</h1>
-      <p class="lead">Ce passage est temporaire. Récupère le fichier avant son expiration.</p>
-      <section class="share-file">
-        <div class="name">${escapeHtml(meta.originalName)}</div>
-        <div class="share-meta">
-          <span>Code : ${escapeHtml(meta.code || meta.id)}</span>
-          <span>Taille : ${escapeHtml(formatBytes(meta.size))}</span>
-          <span>Expire : ${escapeHtml(expiresAt)}</span>
-          <span>${meta.deleteAfterDownload ? 'Suppression après le premier téléchargement.' : 'Suppression automatique à expiration.'}</span>
+  const expiresAt = new Date(meta.expiresAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  const type = escapeHtml(normalizeMimeType(meta.mimeType) || 'application/octet-stream');
+  return layout.page({
+    title: `Télécharger ${escapeHtml(meta.originalName)}`,
+    content: `      <section class="share-page" aria-labelledby="sharedTitle">
+        <p class="recipient-heading">${layout.icon('check')}Un fichier a été partagé avec vous.</p>
+        <p class="kicker">Prêt à recevoir</p>
+        <h1 id="sharedTitle">C’est pour <span class="thin">vous.</span></h1>
+        <div class="share-file">
+          <div class="recipient-file"><span class="file-icon" aria-hidden="true">${layout.icon('file')}</span><div><h2 class="file-name">${escapeHtml(meta.originalName)}</h2>
+          <p class="recipient-meta">${escapeHtml(formatBytes(meta.size))} · ${type}</p></div></div>
+          <a class="primary-btn share-download" href="${escapeHtml(payload.downloadUrl)}">${layout.icon('download')}Télécharger le fichier</a>
+          <p class="share-note">${meta.deleteAfterDownload ? 'Le fichier sera supprimé après le premier téléchargement.' : 'Vous pouvez le télécharger jusqu’à son expiration.'}</p>
         </div>
-      </section>
-      ${payload.canPreview ? `<video class="video-preview" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
-      <a class="btn primary share-download" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
-      
-      <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
-      <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
-    </main>
-  </div>
-  <script src="/assets/site.js?v=14" defer></script>
-</body>
-</html>`;
+        <div class="meta-grid">
+          <div class="meta-box"><span>Disponible jusqu’au</span><strong>${escapeHtml(expiresAt)}</strong></div>
+          <div class="meta-box"><span>Code de réception</span><strong>${escapeHtml(meta.code || meta.id)}</strong></div>
+        </div>
+        ${payload.canPreview ? `<details class="preview-details"><summary>Aperçu de la vidéo</summary><video class="video-preview" controls playsinline preload="none" src="${escapeHtml(payload.previewUrl)}"></video></details>` : ''}
+        <p class="share-note">Ne téléchargez que les fichiers d’une personne de confiance. Le lien et le code donnent accès au fichier.</p>
+        <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
+      </section>`
+  });
 }
 
 function renderMessagePage(title, message) {
-  return `<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
-  <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
-</head>
-<body>
-  <div class="shell share-shell">
-    <main class="share-page card">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="page-code">SYSTEM / NOTICE</div>
-      <h1>${escapeHtml(title)}</h1>
-      <p class="lead">${escapeHtml(message)}</p>
-      <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
-      <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
-    </main>
-  </div>
-  <script src="/assets/site.js?v=14" defer></script>
-</body>
-</html>`;
+  return layout.page({
+    title: escapeHtml(title),
+    content: `      <section class="share-page">
+        <p class="kicker">Système / Information</p>
+        <h1>${escapeHtml(title)}</h1>
+        <p class="lead">${escapeHtml(message)}</p>
+        <div class="actions"><a class="primary-btn" href="/upload">${layout.icon('upload')}Envoyer un fichier</a><a class="secondary-btn" href="/receive">${layout.icon('download')}Recevoir un fichier</a></div>
+        <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
+      </section>`
+  });
 }
 
 ensureStorage()

@@ -3,35 +3,57 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
-  <title>Backend indisponible — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark light">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
+  <title>Serveur indisponible — DropQR</title>
+  <script src="/assets/experience.js?v=4"></script>
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
 </head>
-<body>
-  <div class="shell">
-    <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a></div>
-    <div class="nav-auth" data-discord-auth></div>
+<body class="page-sub">
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="nv" id="nv">
+    <a class="nv-brand" href="/" aria-label="DropQR, accueil"><img class="nv-logo" src="/assets/logo.svg?v=3" alt="" width="30" height="30"><span>DropQR</span></a>
+    <nav class="nv-links" aria-label="Navigation principale">
+      <a href="/">Accueil</a>
+      <a href="/dashboard">Transferts</a>
+      <a href="/help">Comment ça marche</a>
     </nav>
-    <main class="receive-layout">
-      <section class="receive-hero card">
-        <div class="page-code">SYSTEM / OFFLINE</div>
-        <h1 class="small-title">Le backend ne répond pas.</h1>
-        <p class="lead">Cette page statique est accessible, mais l'upload et le téléchargement nécessitent le serveur Node.js de DropQR.</p>
-        <div class="actions"><a class="btn primary" href="/help#deploy">Voir le déploiement</a><a class="btn" href="/">Retour à l'accueil</a></div>
-      </section>
+    <div class="nv-right">
+      <nav class="nv-actions" aria-label="Partager un fichier">
+        <a class="nv-action nv-send" href="/upload"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer</span></a>
+        <a class="nv-action nv-receive" href="/receive"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Recevoir</span></a>
+      </nav>
+      <details class="nv-menu">
+        <summary aria-label="Menu de navigation"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#menu"></use></svg></summary>
+        <div class="nv-menu-panel">
+          <p class="menu-label">À portée de main</p>
+          <nav aria-label="Menu complémentaire">
+            <a href="/">Accueil <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/dashboard">Mes transferts <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/help">Aide <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/mentions">Mentions et confidentialité <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+          </nav>
+          <div class="nav-auth" data-discord-auth></div>
+        </div>
+      </details>
+    </div>
+  </header>
+  <div class="shell">
+    <main id="main" tabindex="-1">
+      <section class="share-page"><p class="kicker">Système / Hors ligne</p><h1>Le serveur<br><span class="thin">ne répond pas.</span></h1><p class="lead">Cette page est accessible, mais l’envoi et le téléchargement nécessitent le serveur Node.js de DropQR.</p><div class="actions"><a class="primary-btn" href="/help#deploy">Voir le déploiement</a><a class="secondary-btn" href="/">Retour à l’accueil</a></div></section>
     </main>
-    
-    <footer>
-      <span><strong>DropQR</strong> / backend requis</span>
-      <div class="footer-links">
-        <a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
-        <a class="footer-action" href="/mentions">Mentions</a>
-      </div>
-    </footer>
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
+  <footer class="site-footer">
+    <a class="foot-brand" href="/">DropQR<span class="signal-square" aria-hidden="true"></span></a>
+    <nav aria-label="Application">
+      <a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a><a href="/mentions">Mentions légales</a>
+      <a data-discord-contact href="#" hidden>Discord</a>
+    </nav>
+    <span class="colophon">Un fichier. Un lien. C’est partagé.</span>
+  </footer>
+  <script src="/assets/site.js?v=16" defer></script>
+
 </body>
 </html>

@@ -1,190 +1,156 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#08090b">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="DropQR — free unlimited file sharing. Drop a file, get a link and a QR code. Fast, private, no account.">
-  <meta property="og:title" content="DropQR — Share without limits">
-  <meta property="og:description" content="Drop a file. It becomes shareable. Get a link or a QR code. Done.">
-  <meta property="og:type" content="website">
-  <title>DropQR — Share without limits</title>
-  <link rel="stylesheet" href="/assets/landing.css?v=1">
-  <script src="/assets/vendor/qrcode.min.js?v=1" defer></script>
-  <script type="module" src="/assets/landing3d.js?v=1"></script>
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Envoyez un fichier et obtenez un lien et un QR code. Partage temporaire, gratuit, sans compte et sans application.">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
+  <title>Partagez. C’est tout. — DropQR</title>
+  <script src="/assets/experience.js?v=4"></script>
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
 </head>
-<body>
-  <canvas id="gl" aria-hidden="true"></canvas>
-  <canvas id="gl2" aria-hidden="true"></canvas>
-
+<body class="page-home no-webgl">
+  <canvas id="gl" aria-hidden="true"></canvas><canvas id="gl2" aria-hidden="true"></canvas>
+  <a class="skip-link" href="#main">Aller au contenu</a>
   <header class="nv" id="nv">
-    <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
-    <nav class="nv-links" aria-label="Primary">
-      <a href="#product">Product</a>
-      <a href="#how">How it works</a>
-      <a href="#faq">FAQ</a>
+    <a class="nv-brand" href="/" aria-label="DropQR, accueil"><img class="nv-logo" src="/assets/logo.svg?v=3" alt="" width="30" height="30"><span>DropQR</span></a>
+    <nav class="nv-links" aria-label="Navigation principale">
+      <a href="/" aria-current="page">Accueil</a>
+      <a href="/dashboard">Transferts</a>
+      <a href="/help">Comment ça marche</a>
     </nav>
     <div class="nv-right">
-      <div class="nav-auth" data-discord-auth></div>
-      <a class="nv-cta" href="/" id="cta-start">Start sharing <span class="arrow" aria-hidden="true">→</span></a>
+      <nav class="nv-actions" aria-label="Partager un fichier">
+        <a class="nv-action nv-send" href="/upload"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer</span></a>
+        <a class="nv-action nv-receive" href="/receive"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Recevoir</span></a>
+      </nav>
+      <details class="nv-menu">
+        <summary aria-label="Menu de navigation"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#menu"></use></svg></summary>
+        <div class="nv-menu-panel">
+          <p class="menu-label">À portée de main</p>
+          <nav aria-label="Menu complémentaire">
+            <a href="/" aria-current="page">Accueil <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/dashboard">Mes transferts <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/help">Aide <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/mentions">Mentions et confidentialité <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+          </nav>
+          <div class="nav-auth" data-discord-auth></div>
+        </div>
+      </details>
     </div>
   </header>
-
-  <main>
-    <!-- ============ HERO ============ -->
+  <main id="main" tabindex="-1">
     <section id="hero">
       <div class="hero-copy">
-        <p class="hero-eyebrow">Free · Unlimited · No account</p>
-        <h1>Share <span class="thin">without</span> limits.</h1>
-        <p class="lead">Photos, videos and files. Drop them. Share them. Done.</p>
-        <div id="dropzone" role="button" tabindex="0" aria-label="Drop a file here, or press Enter to choose a file">
-          <div class="dz-text">
-            <div class="dz-title">Drop anything here</div>
-            <div class="dz-sub">or choose files</div>
-          </div>
-          <div class="dz-icon" aria-hidden="true"></div>
+        <div class="hero-intro">
+          <p class="hero-eyebrow"><span class="signal-square" aria-hidden="true"></span>Le partage, simplement.</p>
+          <h1>Envoyez un fichier.<br><span class="thin">Partagez. C’est tout.</span></h1>
+          <p class="lead">Un lien. Un QR code. Et c’est envoyé.</p>
         </div>
-        <p class="webgl-note">Your browser could not start WebGL — everything still works, only the 3D atmosphere is disabled.</p>
+      <section class="transfer-widget" id="transfer" data-auto-upload="true" data-state="empty" aria-label="Envoyer un fichier">
+        <form id="uploadForm">
+          <div id="filePicker">
+            <div id="dropzone" class="dropzone">
+              <input id="fileInput" class="file-input" name="file" type="file" aria-label="Choisir un fichier" aria-describedby="dropSubtitle">
+              <div class="drop-inner"><span class="drop-title" id="dropTitle">Choisir un fichier</span><span class="drop-subtitle" id="dropSubtitle">Photos, vidéos, documents ou tout autre fichier.</span></div>
+              <span class="upload-emblem" aria-hidden="true"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#qr"></use></svg></span>
+            </div>
+            <button id="cameraButton" class="camera-btn" type="button"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#camera"></use></svg>ou prendre une photo</button>
+            <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden aria-label="Prendre une photo">
+          </div>
+          <div id="fileChip" class="file-chip" hidden>
+            <div class="file-icon"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#file"></use></svg><img id="fileThumbnail" alt="Aperçu du fichier sélectionné" hidden></div>
+            <div class="file-chip-info"><p id="fileChipName" class="file-chip-name"></p><p id="fileChipSize" class="file-chip-size"></p></div>
+            <button id="clearFile" class="clear-btn" type="button" aria-label="Retirer le fichier"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#close"></use></svg></button>
+          </div>
+          <details class="transfer-options" id="transferOptions">
+            <summary><span class="options-label">Options du transfert <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#chevron"></use></svg></span><span class="options-summary" id="optionsSummary">15 min · 1 téléchargement</span></summary>
+            <div class="settings">
+              <label class="field"><span class="label-row">Disponibilité du lien</span><select name="ttlMinutes" id="ttlMinutes"><option value="5">5 minutes</option><option value="15" selected>15 minutes</option><option value="30">30 minutes</option><option value="60">1 heure</option><option value="360">6 heures</option><option value="1440">24 heures</option></select></label>
+              <label class="toggle"><input type="checkbox" id="deleteAfterDownload" name="deleteAfterDownload" checked><span><strong>Supprimer après le premier téléchargement</strong><small>Désactivez pour partager avec plusieurs personnes.</small></span></label>
+            </div>
+          </details>
+          <button id="sendButton" class="primary-btn send-button" type="submit" hidden disabled><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer le fichier</span></button>
+          <div id="progressPanel" class="progress-panel" hidden>
+            <div class="progress-top"><p class="progress-label" id="progressLabel">Envoi en cours…</p><span class="progress-percent" id="progressPercent">0 %</span></div>
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progression de l’envoi"><div id="progressBar" class="progress-bar"></div></div>
+            <div class="progress-meta"><span id="progressLoaded">Préparation…</span><span id="progressSpeed">Gardez cette page ouverte.</span></div>
+            <button id="cancelUpload" class="text-btn cancel-btn" type="button">Annuler l’envoi</button>
+          </div>
+        </form>
+        <section id="result" class="transfer-result" aria-labelledby="resultTitle" hidden>
+          <p class="done-kicker"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#check"></use></svg>Transfert prêt</p>
+          <h2 id="resultTitle" tabindex="-1">Votre fichier est prêt.</h2>
+          <p class="result-file"><span id="resultName"></span> · <span id="resultSize"></span></p>
+          <div class="qr-card"><div class="qr-box"><img id="qrImage" width="240" height="240" alt="QR code à scanner pour recevoir le fichier"></div></div>
+          <p class="result-code"><span>Code de réception</span><strong id="resultCode"></strong></p>
+          <p class="result-expiry" id="resultExpiry"></p>
+          <div class="share-actions">
+            <button class="primary-btn" type="button" id="copyButton"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#link"></use></svg><span>Copier le lien</span></button>
+            <button class="secondary-btn share-btn" type="button" id="shareButton"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#share"></use></svg><span>Partager</span></button>
+          </div>
+          <div class="result-secondary">
+            <a id="downloadQR" class="text-btn" download="dropqr.svg"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>Télécharger le QR</a>
+            <button id="newTransfer" class="text-btn" type="button"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>Nouveau fichier</button>
+          </div>
+          <details class="result-details">
+            <summary>Lien et détails du transfert</summary>
+            <label for="shareLink">Lien de réception<input id="shareLink" type="text" readonly spellcheck="false"></label>
+            <div class="meta-grid"><div class="meta-box"><span>Suppression</span><strong id="resultCleanup"></strong></div><div class="meta-box"><span>Notification Discord</span><strong id="resultDiscord"></strong></div></div>
+            <div class="action-row"><a id="openLink" class="secondary-btn" target="_blank" rel="noopener">Ouvrir le lien</a><a class="secondary-btn" href="/dashboard">Mes transferts</a></div>
+            <div class="actions"><button id="deleteTransferBtn" class="secondary-btn danger" type="button">Supprimer le fichier</button></div>
+          </details>
+          <p id="sandboxWarning" class="warning" hidden></p>
+        </section>
+        <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+        <p id="configNotice" class="warning" hidden></p>
+        <noscript><p class="warning">Activez JavaScript pour envoyer un fichier. Vous pouvez toujours télécharger un fichier depuis son lien direct.</p></noscript>
+        <p class="trust-line"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#shield"></use></svg>Gratuit <b>·</b> Sans compte <b>·</b> Sans application</p>
+      </section>
       </div>
-      <div class="hero-hint" aria-hidden="true"><span>Scroll</span><span class="line"></span></div>
+      <div class="hero-hint" aria-hidden="true"><span>Découvrez la suite</span><span class="line"></span></div>
     </section>
-
-    <!-- ============ SCROLL STORY (les mots vivent dans le canvas 3D) ============ -->
-    <div id="story">
-      <span id="how" class="sr-only">How it works</span>
-      <section class="chapter" aria-label="Step 1: drop your files">
-        <div class="chapter-tag" aria-hidden="true"><span class="num">01</span><span class="lbl">Drop</span></div>
-        <h2 class="sr-only">Drop.</h2>
-        <p class="sr-only">Files fall into the DropQR space and converge toward the drop zone.</p>
-      </section>
-      <section class="chapter" aria-label="Step 2: share the link">
-        <div class="chapter-tag" aria-hidden="true"><span class="num">02</span><span class="lbl">Share</span></div>
-        <h2 class="sr-only">Share.</h2>
-        <p class="sr-only">A link becomes a data trail that travels to another device. The file appears on the other side.</p>
-      </section>
-      <section class="chapter" aria-label="Step 3: scan the QR code">
-        <div class="chapter-tag" aria-hidden="true"><span class="num">03</span><span class="lbl">Scan</span></div>
-        <h2 class="sr-only">Scan.</h2>
-        <p class="sr-only">A floating QR code is scanned and turns into a shareable link, then back into the file.</p>
-      </section>
+    <div id="story" aria-label="Comment ça marche">
+      <p id="how" class="kicker story-heading">Trois gestes. C’est partagé.</p>
+      <section class="chapter"><div class="chapter-tag" aria-hidden="true"><span class="num">01</span><span class="lbl">Déposez</span></div><div class="chapter-copy"><h2>Déposez.</h2><p>Choisissez un fichier sur votre appareil.</p></div></section>
+      <section class="chapter"><div class="chapter-tag" aria-hidden="true"><span class="num">02</span><span class="lbl">Obtenez</span></div><div class="chapter-copy"><h2>Obtenez.</h2><p>Votre lien et votre QR sont prêts en fin d’envoi.</p></div></section>
+      <section class="chapter"><div class="chapter-tag" aria-hidden="true"><span class="num">03</span><span class="lbl">Partagez</span></div><div class="chapter-copy"><h2>Partagez.</h2><p>Envoyez le lien. Ou faites scanner le QR.</p></div></section>
     </div>
-
-    <!-- ============ FEATURES ============ -->
     <section id="product">
-      <div class="section-head">
-        <p class="kicker">Why DropQR</p>
-        <h2>Built for <span class="thin">the instant.</span></h2>
-      </div>
+      <div class="section-head"><p class="kicker">Moins d’étapes. Plus de partage.</p><h2>Juste ce <span class="thin">qu’il faut.</span></h2></div>
       <div class="features">
-        <article class="feature">
-          <div class="mini-view" aria-hidden="true"></div>
-          <div class="f-body">
-            <h3>Unlimited</h3>
-            <p>No size caps, no quotas. Photos, 4K video, archives — the stream never ends.</p>
-          </div>
-        </article>
-        <article class="feature">
-          <div class="mini-view" aria-hidden="true"></div>
-          <div class="f-body">
-            <h3>Fast</h3>
-            <p>A direct beam between two devices. Your link is alive before you blink.</p>
-          </div>
-        </article>
-        <article class="feature">
-          <div class="mini-view" aria-hidden="true"></div>
-          <div class="f-body">
-            <h3>Private</h3>
-            <p>Files travel inside a sealed, temporary passage — auto-deleted after download.</p>
-          </div>
-        </article>
-        <article class="feature">
-          <div class="mini-view" aria-hidden="true"></div>
-          <div class="f-body">
-            <h3>Instant QR</h3>
-            <p>Every upload assembles into a scannable QR. Point a camera, receive the file.</p>
-          </div>
-        </article>
+        <article class="feature"><div class="mini-view" aria-hidden="true"></div><div class="f-body"><h3>Gratuit</h3><p>Pas d’abonnement pour envoyer vos fichiers.</p></div></article>
+        <article class="feature"><div class="mini-view" aria-hidden="true"></div><div class="f-body"><h3>Sans compte</h3><p>Ouvrez la page. Vous pouvez déjà partager.</p></div></article>
+        <article class="feature"><div class="mini-view" aria-hidden="true"></div><div class="f-body"><h3>Sans application</h3><p>Un navigateur suffit, des deux côtés.</p></div></article>
+        <article class="feature"><div class="mini-view" aria-hidden="true"></div><div class="f-body"><h3>Simple</h3><p>Un vrai QR. Un lien. À vous de choisir.</p></div></article>
       </div>
     </section>
-
-    <!-- ============ FAQ ============ -->
+    <section class="use-cases" aria-label="Types de fichiers"><p class="kicker">Tout ce que vous voulez transmettre</p><div class="use-case-list"><span>Photos</span><span>Vidéos</span><span>Documents</span><span>Archives</span></div></section>
+    <section class="reassurance"><div class="reassurance-inner"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#clock"></use></svg><div><h2>De passage. Pas pour toujours.</h2><p>Le fichier reste sur le serveur jusqu’à l’expiration choisie, ou jusqu’au premier téléchargement si cette option est activée. Gardez cette page ouverte pendant l’envoi.</p><p>Limite actuelle : <span data-max-file-size>selon la configuration du serveur</span>. Ne partagez le lien qu’avec les personnes autorisées. <a href="/mentions">En savoir plus sur vos données.</a></p></div></div></section>
     <section id="faq">
-      <div class="section-head faq-wrap" style="margin-bottom:5vh">
-        <p class="kicker">Questions</p>
-        <h2>Everything else <span class="thin">you might ask.</span></h2>
-      </div>
+      <div class="section-head faq-wrap"><p class="kicker">Quelques réponses</p><h2>Tout simplement.</h2></div>
       <div class="faq-wrap">
-        <details>
-          <summary>What is DropQR?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">DropQR is a free file-sharing service built for instant transfers. Drop a file, get a link and a QR code — whoever opens it receives the file. No account, no friction.</p>
-        </details>
-        <details>
-          <summary>Is it really unlimited?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">Yes. There are no quotas and no size caps: send a single photo or a multi-gigabyte video project, as many times as you want.</p>
-        </details>
-        <details>
-          <summary>How long does a link stay alive?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">By design, transfers are temporary: the file is removed after the first download or when its timer runs out — short-lived by default, extendable up to 24 h per transfer.</p>
-        </details>
-        <details>
-          <summary>How do I receive a file?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">Open the shared link, scan the QR code with any camera, or type the transfer code on the receive page. The download starts instantly.</p>
-        </details>
+        <details><summary>Comment recevoir un fichier ?<span class="plus" aria-hidden="true"></span></summary><p class="answer">Ouvrez le lien partagé ou scannez le QR avec l’appareil photo de votre téléphone. Vous pouvez aussi saisir le code sur la page <a href="/receive">Recevoir</a>, puis appuyer sur Télécharger.</p></details>
+        <details><summary>Combien de temps le lien fonctionne-t-il ?<span class="plus" aria-hidden="true"></span></summary><p class="answer">La durée s’affiche dans les options avant l’envoi et avec votre QR après l’envoi. Par défaut, le transfert dure 15 minutes et disparaît après le premier téléchargement. Les durées disponibles dépendent du serveur.</p></details>
+        <details><summary>Peut-on partager avec plusieurs personnes ?<span class="plus" aria-hidden="true"></span></summary><p class="answer">Oui. Avant de choisir le fichier, ouvrez les options et désactivez la suppression après le premier téléchargement. Le fichier restera accessible jusqu’à l’expiration.</p></details>
+        <details><summary>Qui peut accéder à mon fichier ?<span class="plus" aria-hidden="true"></span></summary><p class="answer">Toute personne qui connaît le lien ou le code peut télécharger le fichier. Le stockage est temporaire, mais il n’y a pas de chiffrement de bout en bout. Si les notifications Discord sont activées, le staff peut aussi recevoir le lien. Consultez les <a href="/mentions">mentions et la confidentialité</a>.</p></details>
       </div>
     </section>
-
-    <footer class="site-footer">
-      <span class="foot-brand">DropQR</span>
-      <nav aria-label="App">
-        <a href="/upload">Upload</a>
-        <a href="/receive">Receive</a>
-        <a href="/dashboard">Transfers</a>
-        <a href="/help">Help</a>
-        <a href="/mentions">Legal</a>
-      </nav>
-      <span class="colophon">Free unlimited file sharing — drop, share, done.</span>
-    </footer>
+    <section class="final-cta"><p class="kicker">À vous de jouer</p><h2>Un fichier à partager ?</h2><a class="primary-btn" href="#transfer">Choisir un fichier <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a></section>
   </main>
-
-  <!-- ============ Overlays ============ -->
-  <div id="drag-veil" aria-hidden="true"><span class="veil-tag">Release to drop</span></div>
-
-  <div id="upload-overlay" aria-hidden="true">
-    <div class="up-card">
-      <div class="up-ring">
-        <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
-          <defs>
-            <linearGradient id="upGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#8b7cff"/>
-              <stop offset="1" stop-color="#5b8cff"/>
-            </linearGradient>
-          </defs>
-          <circle class="track" cx="66" cy="66" r="58" fill="none" stroke-width="3"/>
-          <circle class="bar" id="up-bar" cx="66" cy="66" r="58" fill="none" stroke-width="3"/>
-        </svg>
-        <div class="pct" id="up-pct">0%</div>
-      </div>
-      <div class="up-name" id="up-name"></div>
-      <div class="up-status" id="up-status">Uploading</div>
-    </div>
-  </div>
-
-  <div id="result-overlay" role="dialog" aria-modal="false" aria-label="File ready to share">
-    <div class="result-card">
-      <p class="done-kicker">Uploaded</p>
-      <h2>Ready to share.</h2>
-      <div class="result-qr" id="result-qr"></div>
-      <p class="result-link" id="result-link"></p>
-      <p class="result-note" id="result-note"></p>
-      <div class="result-actions">
-        <button class="btn btn-solid" id="btn-copy" type="button">Copy link</button>
-        <button class="btn btn-ghost" id="btn-download" type="button">Download QR</button>
-        <button class="btn btn-linkish" id="btn-again" type="button">Share another file</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="toast" role="status" aria-live="polite"></div>
+  <footer class="site-footer">
+    <a class="foot-brand" href="/">DropQR<span class="signal-square" aria-hidden="true"></span></a>
+    <nav aria-label="Application">
+      <a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a><a href="/mentions">Mentions légales</a>
+      <a data-discord-contact href="#" hidden>Discord</a>
+    </nav>
+    <span class="colophon">Un fichier. Un lien. C’est partagé.</span>
+  </footer>
+  <script src="/assets/site.js?v=16" defer></script>
+  <script src="/assets/store.js?v=1" defer></script>
+  <script src="/assets/upload.js?v=16" defer></script>
+  <script src="/assets/landing.js?v=4" defer></script>
 </body>
 </html>

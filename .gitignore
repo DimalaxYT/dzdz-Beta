@@ -5,3 +5,6 @@ storage/
 !.env.example
 *.log
 .DS_Store
+
+playwright-report/
+test-results/

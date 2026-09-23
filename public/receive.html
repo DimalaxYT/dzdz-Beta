@@ -3,53 +3,72 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
-  <title>Recevoir — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark light">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
+  <title>Recevoir un fichier — DropQR</title>
+  <script src="/assets/experience.js?v=4"></script>
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
 </head>
-<body>
-  <div class="shell">
-    <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a class="active" href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a></div>
-    <div class="nav-auth" data-discord-auth></div>
+<body class="page-sub" data-static-page>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="nv" id="nv">
+    <a class="nv-brand" href="/" aria-label="DropQR, accueil"><img class="nv-logo" src="/assets/logo.svg?v=3" alt="" width="30" height="30"><span>DropQR</span></a>
+    <nav class="nv-links" aria-label="Navigation principale">
+      <a href="/">Accueil</a>
+      <a href="/dashboard">Transferts</a>
+      <a href="/help">Comment ça marche</a>
     </nav>
-
-    <main class="receive-layout">
-      <section class="receive-hero card">
-        <div class="page-code">03 / RECEIVE</div>
-        <h1 class="small-title">Le code ouvre le passage.</h1>
-        <p class="lead">Entre le code reçu ou ouvre directement le lien du QR. Le fichier reste visible jusqu'à son expiration.</p>
-        <form id="receiveForm" class="receive-form">
-          <label class="field"><span class="label-row">Code DropQR <span class="hint">exemple : Q7R4M2K</span></span><input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="ENTRER LE CODE" maxlength="32" required></label>
-          <button class="primary-btn" type="submit">Rechercher le fichier</button>
-          <div id="receiveStatus" class="status"></div>
-        </form>
-      </section>
-
-      <section id="receiveResult" class="panel hidden" aria-live="polite">
-        <div class="panel-head"><div><h2 class="panel-title">Transfert trouvé</h2><p class="panel-caption">Vérifie les informations avant de récupérer le fichier.</p></div><span class="step-pill" id="resultCodeBadge">Code</span></div>
-        <div class="panel-body">
-          <video id="receiveVideo" class="video-preview hidden" controls playsinline preload="metadata"></video>
-          <div class="info" style="margin-top:0"><div class="file-name" id="receiveFileName">—</div><div class="meta-grid">
-            <div class="meta-box"><span>Taille</span><strong id="receiveSize">—</strong></div><div class="meta-box"><span>Expiration</span><strong id="receiveExpiry">—</strong></div>
-            <div class="meta-box"><span>Téléchargements</span><strong id="receiveDownloads">—</strong></div><div class="meta-box"><span>Nettoyage</span><strong id="receiveCleanup">—</strong></div>
-          </div><div class="action-row"><a id="downloadButton" class="btn primary" href="#">Télécharger</a><button id="copyReceiveLink" class="secondary-btn" type="button">Copier le lien</button></div></div>
+    <div class="nv-right">
+      <nav class="nv-actions" aria-label="Partager un fichier">
+        <a class="nv-action nv-send" href="/upload"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer</span></a>
+        <a class="nv-action nv-receive" href="/receive" aria-current="page"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Recevoir</span></a>
+      </nav>
+      <details class="nv-menu">
+        <summary aria-label="Menu de navigation"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#menu"></use></svg></summary>
+        <div class="nv-menu-panel">
+          <p class="menu-label">À portée de main</p>
+          <nav aria-label="Menu complémentaire">
+            <a href="/">Accueil <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/dashboard">Mes transferts <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/help">Aide <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/mentions">Mentions et confidentialité <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+          </nav>
+          <div class="nav-auth" data-discord-auth></div>
         </div>
-      </section>
-    </main>
-
-    
-    <footer>
-      <span><strong>DropQR</strong> / réception sans compte</span>
-      <div class="footer-links">
-        <a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
-        <a class="footer-action" href="/mentions">Mentions</a>
+      </details>
+    </div>
+  </header>
+  <div class="shell">
+    <main id="main" tabindex="-1">
+      <div class="receive-layout" id="receiveLayout">
+        <section class="receive-hero card">
+          <p class="kicker">02 / Recevoir</p><h1 class="small-title">Un code.<br><span class="thin">Votre fichier.</span></h1><p class="lead">Saisissez le code reçu pour retrouver le fichier partagé avec vous.</p>
+          <form id="receiveForm" class="receive-form"><label class="field"><span class="label-row">Code de réception <span class="hint">ex. Q7R4M2K</span></span><input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="ENTRER LE CODE" maxlength="32" required></label><button class="primary-btn" type="submit"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>Retrouver le fichier</button><p id="receiveStatus" class="status" role="status" aria-live="polite"></p></form>
+          <p class="receive-tip">Vous avez un QR ? Scannez-le avec l’appareil photo de votre téléphone.</p>
+        </section>
+        <section id="receiveResult" class="panel" aria-labelledby="receiveFileName" hidden>
+          <div class="panel-body"><p class="recipient-heading"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#check"></use></svg>Un fichier a été partagé avec vous.</p><div class="recipient-file"><span class="file-icon" aria-hidden="true"><svg class="icon" width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#file"></use></svg></span><div><h2 class="file-name" id="receiveFileName" tabindex="-1"></h2><p class="recipient-meta"><span id="receiveSize"></span> · <span id="receiveType"></span></p></div></div>
+            <a id="downloadButton" class="primary-btn share-download"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Télécharger le fichier</span></a>
+            <p class="share-note" id="receiveCleanup"></p>
+            <div class="meta-grid"><div class="meta-box"><span>Disponible jusqu’au</span><strong id="receiveExpiry"></strong></div><div class="meta-box"><span>Code</span><strong id="resultCodeBadge"></strong></div></div>
+            <details class="preview-details" id="receivePreview" hidden><summary>Aperçu de la vidéo</summary><video id="receiveVideo" class="video-preview" controls playsinline preload="none"></video></details>
+            <div class="action-row"><button id="copyReceiveLink" class="secondary-btn" type="button">Copier le lien</button><button id="otherCode" class="secondary-btn" type="button">Autre code</button></div><p id="receiveResultStatus" class="status" role="status"></p>
+          </div>
+        </section>
       </div>
-    </footer>
+    </main>
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
-  <script src="/assets/receive.js?v=6" defer></script>
+  <footer class="site-footer">
+    <a class="foot-brand" href="/">DropQR<span class="signal-square" aria-hidden="true"></span></a>
+    <nav aria-label="Application">
+      <a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a><a href="/mentions">Mentions légales</a>
+      <a data-discord-contact href="#" hidden>Discord</a>
+    </nav>
+    <span class="colophon">Un fichier. Un lien. C’est partagé.</span>
+  </footer>
+  <script src="/assets/site.js?v=16" defer></script>
+  <script src="/assets/receive.js?v=7" defer></script>
 </body>
 </html>

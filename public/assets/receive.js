@@ -1,119 +1,95 @@
-const initApp = () => {
-  const form = document.getElementById('receiveForm');
-  if (!form) return;
-  // Ne jamais initialiser deux fois le même formulaire (navigation PJAX).
-  if (form.dataset.dropqrInit === '1') return;
-  form.dataset.dropqrInit = '1';
-  const input = document.getElementById('transferCode');
-  const status = document.getElementById('receiveStatus');
-  const result = document.getElementById('receiveResult');
-  const resultCodeBadge = document.getElementById('resultCodeBadge');
-  const receiveFileName = document.getElementById('receiveFileName');
-  const receiveSize = document.getElementById('receiveSize');
-  const receiveExpiry = document.getElementById('receiveExpiry');
-  const receiveDownloads = document.getElementById('receiveDownloads');
-  const receiveCleanup = document.getElementById('receiveCleanup');
-  const downloadButton = document.getElementById('downloadButton');
-  const copyReceiveLink = document.getElementById('copyReceiveLink');
-  const receiveVideo = document.getElementById('receiveVideo');
+(() => {
+  'use strict';
+  let teardown = () => {};
 
-  let currentPayload = null;
-
-  function normalize(value) {
-    return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
-  }
-
-  function setStatus(message, type = '') {
-    status.className = `status ${type}`.trim();
-    status.textContent = message;
-  }
-
-  function formatDate(value) {
-    return new Date(value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
-  }
-
-  function isVideo(payload) {
-    return String(payload && payload.mimeType || '').toLowerCase().startsWith('video/');
-  }
-
-  function hideVideo() {
-    if (!receiveVideo) return;
-    receiveVideo.pause();
-    receiveVideo.removeAttribute('src');
-    receiveVideo.load();
-    receiveVideo.classList.add('hidden');
-  }
-
-  async function lookup(code, autoOpen = false) {
-    const normalized = normalize(code);
-    if (!normalized) return;
-
-    input.value = normalized;
-    result.classList.add('hidden');
-    hideVideo();
-    setStatus('Recherche du fichier…');
-
-    try {
-      const response = await fetch(`/api/codes/${encodeURIComponent(normalized)}`, { cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      if (response.status === 404) throw new Error('Code introuvable. Vérifie les caractères puis réessaie.');
-      if (response.status === 410) throw new Error('Ce transfert a expiré ou a déjà été supprimé.');
-      if (!response.ok) throw new Error(payload.error || `Erreur serveur HTTP ${response.status}.`);
-
-      currentPayload = payload;
-      resultCodeBadge.textContent = payload.code || normalized;
-      receiveFileName.textContent = payload.fileName;
-      receiveSize.textContent = payload.sizeHuman;
-      receiveExpiry.textContent = formatDate(payload.expiresAt);
-      receiveDownloads.textContent = String(payload.downloads || 0);
-      receiveCleanup.textContent = payload.deleteAfterDownload ? 'Après téléchargement' : 'À expiration';
-      downloadButton.href = payload.downloadUrl;
-      copyReceiveLink.dataset.url = payload.shareUrl;
-
-      if (isVideo(payload) && payload.previewUrl && receiveVideo) {
-        receiveVideo.src = payload.previewUrl;
-        receiveVideo.classList.remove('hidden');
-        downloadButton.textContent = 'Télécharger la vidéo';
-      } else {
-        hideVideo();
-        downloadButton.textContent = 'Télécharger';
+  function initReceive() {
+    const form = document.getElementById('receiveForm');
+    if (form?.dataset.dropqrInit === '1') return;
+    teardown();
+    if (!form) return;
+    form.dataset.dropqrInit = '1';
+    const $ = (id) => document.getElementById(id);
+    const lifecycle = new AbortController();
+    let request = null;
+    let payload = null;
+    const input = $('transferCode');
+    const result = $('receiveResult');
+    const status = $('receiveStatus');
+    const video = $('receiveVideo');
+    const button = form.querySelector('button');
+    const normalize = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+    const setStatus = (text = '', error = false) => { status.textContent = text; status.className = error ? 'status error' : 'status'; status.setAttribute('role', error ? 'alert' : 'status'); };
+    const on = (node, event, handler) => node.addEventListener(event, handler, { signal: lifecycle.signal });
+    function resetVideo() {
+      video.pause(); video.removeAttribute('src'); video.load();
+      $('receivePreview').open = false; $('receivePreview').hidden = true;
+    }
+    async function lookup(code) {
+      const normalized = normalize(code);
+      if (!normalized) { setStatus('Saisissez le code reçu pour continuer.', true); input.focus(); return; }
+      request?.abort();
+      const current = new AbortController();
+      request = current;
+      input.value = normalized;
+      result.hidden = true;
+      $('receiveLayout').classList.remove('has-result');
+      resetVideo();
+      payload = null;
+      button.disabled = true;
+      setStatus('Recherche de votre fichier…');
+      try {
+        const response = await fetch(`/api/codes/${encodeURIComponent(normalized)}`, { cache: 'no-store', signal: current.signal });
+        const data = await response.json().catch(() => null);
+        if (response.status === 404) throw new Error('Code introuvable. Vérifiez les caractères. Le fichier a peut-être expiré ou été supprimé.');
+        if (response.status === 410) throw new Error('Ce transfert a expiré ou a déjà été supprimé.');
+        if (!response.ok || !data?.downloadUrl) throw new Error(data?.error || 'Le serveur est indisponible. Réessayez dans un instant.');
+        if (current.signal.aborted || lifecycle.signal.aborted) return;
+        payload = data;
+        $('receiveFileName').textContent = data.fileName;
+        $('receiveSize').textContent = data.sizeHuman;
+        $('receiveType').textContent = window.DropQR.fileType(data.mimeType, data.fileName);
+        $('receiveExpiry').textContent = window.DropQR.formatDate(data.expiresAt);
+        $('resultCodeBadge').textContent = data.code || normalized;
+        $('receiveCleanup').textContent = data.deleteAfterDownload ? 'Le fichier sera supprimé après le premier téléchargement.' : 'Vous pouvez le télécharger jusqu’à son expiration.';
+        $('downloadButton').href = data.downloadUrl;
+        // L'aperçu n'est chargé qu'après une action explicite, jamais le fichier à télécharger.
+        $('receivePreview').hidden = !(data.canPreview && data.previewUrl);
+        $('receiveResultStatus').textContent = '';
+        result.hidden = false;
+        $('receiveLayout').classList.add('has-result');
+        setStatus('Fichier trouvé.');
+        $('receiveFileName').focus({ preventScroll: true });
+        result.scrollIntoView({ block: 'start', behavior: 'auto' });
+      } catch (error) {
+        if (error.name !== 'AbortError' && !lifecycle.signal.aborted) setStatus(error.message || 'Erreur réseau. Vérifiez votre connexion.', true);
+      } finally {
+        if (request === current) button.disabled = false;
       }
-
-      result.classList.remove('hidden');
-      setStatus(autoOpen ? 'QR code reconnu. Tu peux lire ou télécharger.' : 'Fichier trouvé.', 'success');
-    } catch (error) {
-      currentPayload = null;
-      hideVideo();
-      setStatus(error.message, 'error');
     }
+    on(form, 'submit', (event) => { event.preventDefault(); lookup(input.value); });
+    on(input, 'input', () => { const position = input.selectionStart; input.value = normalize(input.value); input.setSelectionRange(position, position); });
+    on($('receivePreview'), 'toggle', () => {
+      if ($('receivePreview').open && payload?.previewUrl && !video.getAttribute('src')) video.src = payload.previewUrl;
+      if (!$('receivePreview').open) video.pause();
+    });
+    on($('copyReceiveLink'), 'click', async () => {
+      if (!payload) return;
+      const copied = await window.DropQR.copyText(payload.shareUrl);
+      $('receiveResultStatus').textContent = copied ? 'Lien copié.' : 'Copie automatique indisponible. Copiez l’adresse de cette page.';
+    });
+    on($('otherCode'), 'click', () => {
+      request?.abort(); payload = null; resetVideo();
+      result.hidden = true;
+      $('receiveLayout').classList.remove('has-result');
+      input.value = '';
+      setStatus();
+      input.focus();
+    });
+    teardown = () => { lifecycle.abort(); request?.abort(); video.pause(); video.removeAttribute('src'); };
+    const code = new URLSearchParams(location.search).get('code');
+    if (code) lookup(code);
   }
-
-  input.addEventListener('input', () => {
-    const selection = input.selectionStart;
-    input.value = normalize(input.value);
-    input.setSelectionRange(selection, selection);
-  });
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await lookup(input.value);
-  });
-
-  copyReceiveLink.addEventListener('click', async () => {
-    const url = copyReceiveLink.dataset.url || (currentPayload && currentPayload.shareUrl);
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      copyReceiveLink.textContent = 'Copié';
-      setTimeout(() => { copyReceiveLink.textContent = 'Copier le lien'; }, 1400);
-    } catch (_error) {
-      window.prompt('Copie le lien:', url);
-    }
-  });
-
-  const params = new URLSearchParams(window.location.search);
-  const code = normalize(params.get('code'));
-  if (code) lookup(code, true);
-};
-initApp();
-window.addEventListener('pjax:load', initApp);
+  initReceive();
+  window.addEventListener('pjax:before', () => teardown());
+  window.addEventListener('pjax:load', initReceive);
+})();

@@ -49,14 +49,14 @@ const initDashboard = () => {
     return button;
   }
 
-  function copyText(text, button, doneLabel) {
+  async function copyText(text, button, doneLabel) {
     const original = button.textContent;
-    navigator.clipboard.writeText(text)
-      .then(() => {
-        button.textContent = doneLabel;
-        window.setTimeout(() => { button.textContent = original; }, 1400);
-      })
-      .catch(() => { window.prompt('Copie la valeur:', text); });
+    if (await window.DropQR.copyText(text)) {
+      button.textContent = doneLabel;
+      window.setTimeout(() => { button.textContent = original; }, 1400);
+    } else {
+      window.prompt('Copiez la valeur :', text);
+    }
   }
 
   async function refreshEntry(entry) {

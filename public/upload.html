@@ -3,116 +3,121 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
-  <title>Envoyer — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark light">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
+  <title>Envoyer un fichier — DropQR</title>
+  <script src="/assets/experience.js?v=4"></script>
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
 </head>
-<body>
-  <div class="shell">
-    <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links">
-        <a href="/">Accueil</a>
-        <a class="active" href="/upload">Envoyer</a>
-        <a href="/receive">Recevoir</a>
-        <a href="/dashboard">Transferts</a>
-        <a href="/help">Aide</a>
-      </div>
-    <div class="nav-auth" data-discord-auth></div>
+<body class="page-sub" data-static-page>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="nv" id="nv">
+    <a class="nv-brand" href="/" aria-label="DropQR, accueil"><img class="nv-logo" src="/assets/logo.svg?v=3" alt="" width="30" height="30"><span>DropQR</span></a>
+    <nav class="nv-links" aria-label="Navigation principale">
+      <a href="/">Accueil</a>
+      <a href="/dashboard">Transferts</a>
+      <a href="/help">Comment ça marche</a>
     </nav>
-    <header class="hero page-heading">
-      <div class="hero-main">
-        <div class="page-code">02 / SEND</div>
-        <h1>Déposer un fichier, ouvrir un passage.</h1>
-        <p class="lead">Choisis la durée, lance l'envoi et partage le code. Les morceaux partent en parallèle pour garder une progression fluide.</p>
-      </div>
-      <div class="upload-stats" data-parallax data-speed="-.08" aria-label="Capacités d'envoi">
-        <span><strong data-max-file-size>10 Go</strong>limite annoncée</span>
-        <span><strong>5 flux</strong>en parallèle</span>
-        <span><strong>16 Mo</strong>par morceau</span>
-      </div>
-    </header>
-    <main class="app-grid">
-      <section class="panel" aria-labelledby="uploadTitle">
-        <div class="panel-head">
-          <div><h2 id="uploadTitle" class="panel-title">Nouveau transfert</h2><p class="panel-caption">Un fichier par passage. Le lien sera temporaire.</p></div>
-          <span class="step-pill">Étape 01</span>
+    <div class="nv-right">
+      <nav class="nv-actions" aria-label="Partager un fichier">
+        <a class="nv-action nv-send" href="/upload" aria-current="page"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer</span></a>
+        <a class="nv-action nv-receive" href="/receive"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Recevoir</span></a>
+      </nav>
+      <details class="nv-menu">
+        <summary aria-label="Menu de navigation"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#menu"></use></svg></summary>
+        <div class="nv-menu-panel">
+          <p class="menu-label">À portée de main</p>
+          <nav aria-label="Menu complémentaire">
+            <a href="/">Accueil <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/dashboard">Mes transferts <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/help">Aide <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/mentions">Mentions et confidentialité <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+          </nav>
+          <div class="nav-auth" data-discord-auth></div>
         </div>
-        <div class="panel-body">
-          <form id="uploadForm">
+      </details>
+    </div>
+  </header>
+  <div class="shell">
+    <main id="main" tabindex="-1">
+      <section class="page-hero"><div><p class="kicker">01 / Envoyer</p><h1>Votre fichier.<br><span class="thin">À portée de lien.</span></h1><p class="lead">Choisissez le fichier, réglez sa durée, puis partagez-le.</p></div><div class="capacity-board" aria-label="Le partage en bref"><div class="capacity-item"><strong>01</strong><span>fichier par envoi</span></div><div class="capacity-item"><strong>QR + lien</strong><span>au choix</span></div><div class="capacity-item"><strong>0</strong><span>compte requis</span></div></div></section>
+      <div class="app-grid">
+      <section class="transfer-widget" id="transfer" data-auto-upload="false" data-state="empty" aria-label="Envoyer un fichier">
+        <form id="uploadForm">
+          <div id="filePicker">
             <div id="dropzone" class="dropzone">
-              <input id="fileInput" class="file-input" name="file" type="file" required aria-label="Choisir un fichier">
-              <div class="drop-inner">
-                <div class="upload-orb"><img src="/assets/upload-icon.svg?v=6" alt="" aria-hidden="true"></div>
-                <div class="drop-title" id="dropTitle">Déposer le fichier ici</div>
-                <p class="drop-subtitle" id="dropSubtitle">ou cliquer pour le choisir</p>
-              </div>
+              <input id="fileInput" class="file-input" name="file" type="file" aria-label="Choisir un fichier" aria-describedby="dropSubtitle">
+              <div class="drop-inner"><span class="drop-title" id="dropTitle">Choisir un fichier</span><span class="drop-subtitle" id="dropSubtitle">Photos, vidéos, documents ou tout autre fichier.</span></div>
+              <span class="upload-emblem" aria-hidden="true"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#qr"></use></svg></span>
             </div>
-            <div id="fileChip" class="file-chip" aria-live="polite">
-              <div class="file-icon"><img src="/assets/file-icon.svg?v=6" alt="" aria-hidden="true"></div>
-              <div class="file-chip-info"><div id="fileChipName" class="file-chip-name"></div><div id="fileChipSize" class="file-chip-size"></div></div>
-              <button id="clearFile" class="clear-btn" type="button">Retirer</button>
-            </div>
+            <button id="cameraButton" class="camera-btn" type="button"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#camera"></use></svg>ou prendre une photo</button>
+            <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden aria-label="Prendre une photo">
+          </div>
+          <div id="fileChip" class="file-chip" hidden>
+            <div class="file-icon"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#file"></use></svg><img id="fileThumbnail" alt="Aperçu du fichier sélectionné" hidden></div>
+            <div class="file-chip-info"><p id="fileChipName" class="file-chip-name"></p><p id="fileChipSize" class="file-chip-size"></p></div>
+            <button id="clearFile" class="clear-btn" type="button" aria-label="Retirer le fichier"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#close"></use></svg></button>
+          </div>
+          <details class="transfer-options" id="transferOptions">
+            <summary><span class="options-label">Options du transfert <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#chevron"></use></svg></span><span class="options-summary" id="optionsSummary">15 min · 1 téléchargement</span></summary>
             <div class="settings">
-              <label class="field"><span class="label-row">Durée du lien <span class="hint">suppression automatique</span></span>
-                <select name="ttlMinutes" id="ttlMinutes">
-                  <option value="5">5 minutes</option><option value="15" selected>15 minutes</option><option value="30">30 minutes</option><option value="60">1 heure</option><option value="360">6 heures</option><option value="1440">24 heures</option>
-                </select>
-              </label>
-              <label class="toggle"><input type="checkbox" id="deleteAfterDownload" name="deleteAfterDownload" checked><span><strong>Supprimer après le premier téléchargement</strong><span>À désactiver si plusieurs personnes doivent récupérer le fichier.</span></span></label>
-              <button id="sendButton" class="primary-btn" type="submit" disabled>Envoyer et générer le code</button>
+              <label class="field"><span class="label-row">Disponibilité du lien</span><select name="ttlMinutes" id="ttlMinutes"><option value="5">5 minutes</option><option value="15" selected>15 minutes</option><option value="30">30 minutes</option><option value="60">1 heure</option><option value="360">6 heures</option><option value="1440">24 heures</option></select></label>
+              <label class="toggle"><input type="checkbox" id="deleteAfterDownload" name="deleteAfterDownload" checked><span><strong>Supprimer après le premier téléchargement</strong><small>Désactivez pour partager avec plusieurs personnes.</small></span></label>
             </div>
-            <div id="progressPanel" class="progress-panel" aria-live="polite">
-              <div class="progress-top"><div class="progress-label" id="progressLabel">Upload en cours</div><div class="progress-percent" id="progressPercent">0%</div></div>
-              <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progression de l'upload"><div id="progressBar" class="progress-bar"></div></div>
-              <div class="progress-meta"><span id="progressLoaded">0 o / 0 o</span><span id="progressSpeed">Préparation</span></div>
-            </div>
-            <div id="status" class="status" role="status"></div>
-          </form>
-        </div>
+          </details>
+          <button id="sendButton" class="primary-btn send-button" type="submit" hidden disabled><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer le fichier</span></button>
+          <div id="progressPanel" class="progress-panel" hidden>
+            <div class="progress-top"><p class="progress-label" id="progressLabel">Envoi en cours…</p><span class="progress-percent" id="progressPercent">0 %</span></div>
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progression de l’envoi"><div id="progressBar" class="progress-bar"></div></div>
+            <div class="progress-meta"><span id="progressLoaded">Préparation…</span><span id="progressSpeed">Gardez cette page ouverte.</span></div>
+            <button id="cancelUpload" class="text-btn cancel-btn" type="button">Annuler l’envoi</button>
+          </div>
+        </form>
+        <section id="result" class="transfer-result" aria-labelledby="resultTitle" hidden>
+          <p class="done-kicker"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#check"></use></svg>Transfert prêt</p>
+          <h2 id="resultTitle" tabindex="-1">Votre fichier est prêt.</h2>
+          <p class="result-file"><span id="resultName"></span> · <span id="resultSize"></span></p>
+          <div class="qr-card"><div class="qr-box"><img id="qrImage" width="240" height="240" alt="QR code à scanner pour recevoir le fichier"></div></div>
+          <p class="result-code"><span>Code de réception</span><strong id="resultCode"></strong></p>
+          <p class="result-expiry" id="resultExpiry"></p>
+          <div class="share-actions">
+            <button class="primary-btn" type="button" id="copyButton"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#link"></use></svg><span>Copier le lien</span></button>
+            <button class="secondary-btn share-btn" type="button" id="shareButton"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#share"></use></svg><span>Partager</span></button>
+          </div>
+          <div class="result-secondary">
+            <a id="downloadQR" class="text-btn" download="dropqr.svg"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>Télécharger le QR</a>
+            <button id="newTransfer" class="text-btn" type="button"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>Nouveau fichier</button>
+          </div>
+          <details class="result-details">
+            <summary>Lien et détails du transfert</summary>
+            <label for="shareLink">Lien de réception<input id="shareLink" type="text" readonly spellcheck="false"></label>
+            <div class="meta-grid"><div class="meta-box"><span>Suppression</span><strong id="resultCleanup"></strong></div><div class="meta-box"><span>Notification Discord</span><strong id="resultDiscord"></strong></div></div>
+            <div class="action-row"><a id="openLink" class="secondary-btn" target="_blank" rel="noopener">Ouvrir le lien</a><a class="secondary-btn" href="/dashboard">Mes transferts</a></div>
+            <div class="actions"><button id="deleteTransferBtn" class="secondary-btn danger" type="button">Supprimer le fichier</button></div>
+          </details>
+          <p id="sandboxWarning" class="warning" hidden></p>
+        </section>
+        <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+        <p id="configNotice" class="warning" hidden></p>
+        <noscript><p class="warning">Activez JavaScript pour envoyer un fichier. Vous pouvez toujours télécharger un fichier depuis son lien direct.</p></noscript>
+        <p class="trust-line"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#shield"></use></svg>Gratuit <b>·</b> Sans compte <b>·</b> Sans application</p>
       </section>
-      <aside class="panel result-panel" aria-labelledby="resultTitle">
-        <div class="panel-head"><div><h2 id="resultTitle" class="panel-title">Sortie du transfert</h2><p class="panel-caption">Le code et le QR apparaîtront ici une fois l'envoi terminé.</p></div><span class="step-pill">Étape 02</span></div>
-        <div class="panel-body">
-          <div id="emptyState" class="result-empty">
-            <div class="timeline">
-              <div class="timeline-item"><div class="timeline-num">01</div><p><strong>Upload</strong>Le fichier est envoyé par morceaux parallèles.</p></div>
-              <div class="timeline-item"><div class="timeline-num">02</div><p><strong>Signal</strong>Un code court, un lien et un QR sont générés.</p></div>
-              <div class="timeline-item"><div class="timeline-num">03</div><p><strong>Nettoyage</strong>Le serveur supprimera le fichier à la fin du passage.</p></div>
-            </div>
-            <div id="configNotice" class="notice hidden"></div>
-            <div class="warning">Le code et le QR donnent accès au fichier tant que le transfert existe.</div>
-          </div>
-          <div id="result" class="result">
-            <div id="sandboxWarning" class="warning hidden"></div>
-            <div class="qr-card"><div class="qr-box"><img id="qrImage" alt="QR code du lien de réception"></div><div class="scan-note">Scanner ou transmettre le code</div></div>
-            <div class="info">
-              <div class="file-name" id="resultName"></div>
-              <div class="meta-grid">
-                <div class="meta-box"><span>Code</span><strong id="resultCode">—</strong></div><div class="meta-box"><span>Taille</span><strong id="resultSize">—</strong></div>
-                <div class="meta-box"><span>Expiration</span><strong id="resultExpiry">—</strong></div><div class="meta-box"><span>Nettoyage</span><strong id="resultCleanup">—</strong></div>
-                <div class="meta-box"><span>Discord</span><strong id="resultDiscord">—</strong></div><div class="meta-box"><span>État</span><strong>Prêt</strong></div>
-              </div>
-              <div class="link-row"><div class="share-link" id="shareLink"></div><button class="copy-btn" type="button" id="copyButton">Copier</button></div>
-              <div class="action-row"><a id="openLink" class="secondary-btn" href="#" target="_blank" rel="noopener">Ouvrir</a><button id="newTransfer" class="secondary-btn" type="button">Nouveau</button></div>
-              <div class="action-row"><button id="deleteTransferBtn" class="secondary-btn danger" type="button" disabled>Supprimer le fichier</button><a class="secondary-btn" href="/dashboard">Tableau de bord</a></div>
-            </div>
-          </div>
-        </div>
-      </aside>
-    </main>
-    
-    <footer>
-      <span><strong>DropQR</strong> / envoi parallèle / fin programmée</span>
-      <div class="footer-links">
-        <a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
-        <a class="footer-action" href="/mentions">Mentions</a>
+        <aside class="upload-aside" aria-label="Comment fonctionne le transfert"><p class="kicker">Déposez. Partagez. C’est tout.</p><ol class="timeline"><li class="timeline-item"><span class="timeline-num">01</span><p><strong>Un fichier de votre choix</strong>Photo, vidéo, document ou archive.</p></li><li class="timeline-item"><span class="timeline-num">02</span><p><strong>Un lien et un vrai QR</strong>À copier, partager ou télécharger.</p></li><li class="timeline-item"><span class="timeline-num">03</span><p><strong>Une disponibilité limitée</strong>Vous choisissez quand le fichier disparaît.</p></li></ol><p class="notice">Limite actuelle : <span data-max-file-size>selon la configuration du serveur</span>. Le lien et le code donnent accès au fichier : partagez-les uniquement avec les bonnes personnes.</p></aside>
       </div>
-    </footer>
+    </main>
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
+  <footer class="site-footer">
+    <a class="foot-brand" href="/">DropQR<span class="signal-square" aria-hidden="true"></span></a>
+    <nav aria-label="Application">
+      <a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a><a href="/mentions">Mentions légales</a>
+      <a data-discord-contact href="#" hidden>Discord</a>
+    </nav>
+    <span class="colophon">Un fichier. Un lien. C’est partagé.</span>
+  </footer>
+  <script src="/assets/site.js?v=16" defer></script>
   <script src="/assets/store.js?v=1" defer></script>
-  <script src="/assets/upload.js?v=15" defer></script>
+  <script src="/assets/upload.js?v=16" defer></script>
 </body>
 </html>

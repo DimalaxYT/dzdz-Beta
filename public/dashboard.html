@@ -3,53 +3,61 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
-  <meta name="color-scheme" content="dark">
-  <title>Transferts — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark light">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
+  <title>Mes transferts — DropQR</title>
+  <script src="/assets/experience.js?v=4"></script>
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
 </head>
-<body>
-  <div class="shell">
-    <nav class="topbar" aria-label="Navigation principale">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
-      <div class="nav-links"><a href="/">Accueil</a><a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a class="active" href="/dashboard">Transferts</a><a href="/help">Aide</a></div>
-    <div class="nav-auth" data-discord-auth></div>
+<body class="page-sub" data-static-page>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="nv" id="nv">
+    <a class="nv-brand" href="/" aria-label="DropQR, accueil"><img class="nv-logo" src="/assets/logo.svg?v=3" alt="" width="30" height="30"><span>DropQR</span></a>
+    <nav class="nv-links" aria-label="Navigation principale">
+      <a href="/">Accueil</a>
+      <a href="/dashboard" aria-current="page">Transferts</a>
+      <a href="/help">Comment ça marche</a>
     </nav>
-
-    <main class="dash-layout">
-      <section class="receive-hero card">
-        <div class="page-code">04 / DASHBOARD</div>
-        <h1 class="small-title">Tes transferts, sous ta main.</h1>
-        <p class="lead">Les fichiers envoyés depuis ce navigateur sont listés ici avec leur clé de suppression. Tu peux retirer un fichier du serveur avant son expiration.</p>
-        <div class="action-row dash-toolbar">
-          <button id="refreshTransfers" class="secondary-btn" type="button">Actualiser</button>
-          <button id="clearTransferList" class="secondary-btn" type="button">Effacer la liste locale</button>
+    <div class="nv-right">
+      <nav class="nv-actions" aria-label="Partager un fichier">
+        <a class="nv-action nv-send" href="/upload"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span>Envoyer</span></a>
+        <a class="nv-action nv-receive" href="/receive"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span>Recevoir</span></a>
+      </nav>
+      <details class="nv-menu">
+        <summary aria-label="Menu de navigation"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#menu"></use></svg></summary>
+        <div class="nv-menu-panel">
+          <p class="menu-label">À portée de main</p>
+          <nav aria-label="Menu complémentaire">
+            <a href="/">Accueil <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/dashboard" aria-current="page">Mes transferts <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/help">Aide <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+            <a href="/mentions">Mentions et confidentialité <svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#arrow-right"></use></svg></a>
+          </nav>
+          <div class="nav-auth" data-discord-auth></div>
         </div>
-        <div id="dashboardStatus" class="status" role="status"></div>
-      </section>
-
-      <section class="panel" id="dashboardRoot">
-        <div class="panel-head"><div><h2 class="panel-title">Transferts de ce navigateur</h2><p class="panel-caption">La liste et les clés sont stockées localement&nbsp;: elles ne quittent jamais ce navigateur.</p></div><span class="step-pill" id="transferCount">0 transfert</span></div>
-        <div class="panel-body">
-          <div id="dashboardEmpty" class="result-empty hidden">
-            <div class="warning">Aucun transfert enregistré ici pour le moment. Crée un transfert depuis la page Envoyer&nbsp;: il apparaîtra automatiquement dans cette liste avec sa clé de suppression.</div>
-            <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a></div>
-          </div>
-          <div id="transferList" class="transfer-list"></div>
-        </div>
-      </section>
-    </main>
-
-    <footer>
-      <span><strong>DropQR</strong> / contrôle local / fin programmée</span>
-      <div class="footer-links">
-        <a class="footer-action discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
-        <a class="footer-action" href="/mentions">Mentions</a>
+      </details>
+    </div>
+  </header>
+  <div class="shell">
+    <main id="main" tabindex="-1">
+      <div class="dash-layout">
+        <section class="receive-hero card"><p class="kicker">03 / Mes transferts</p><h1 class="small-title">Partagés.<br><span class="thin">Pas oubliés.</span></h1><p class="lead">Retrouvez les fichiers envoyés depuis ce navigateur. Vous pouvez les supprimer avant leur expiration.</p><div class="action-row dash-toolbar"><button id="refreshTransfers" class="secondary-btn" type="button">Actualiser</button><button id="clearTransferList" class="secondary-btn" type="button">Effacer la liste locale</button></div><p id="dashboardStatus" class="status" role="status"></p></section>
+        <section class="panel" id="dashboardRoot"><div class="panel-head"><div><h2 class="panel-title">Sur ce navigateur</h2><p class="panel-caption">La liste et vos clés sont enregistrées localement. La clé est transmise au serveur uniquement pour demander une suppression.</p></div><span class="step-pill" id="transferCount">0 transfert</span></div><div class="panel-body"><div id="dashboardEmpty" class="result-empty hidden"><p class="notice">Aucun transfert enregistré ici. Votre prochain envoi apparaîtra automatiquement dans cette liste.</p><div class="actions"><a class="primary-btn" href="/upload"><svg class="icon " width="20" height="20" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>Envoyer un fichier</a></div></div><div id="transferList" class="transfer-list"></div></div></section>
       </div>
-    </footer>
+    </main>
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
+  <footer class="site-footer">
+    <a class="foot-brand" href="/">DropQR<span class="signal-square" aria-hidden="true"></span></a>
+    <nav aria-label="Application">
+      <a href="/upload">Envoyer</a><a href="/receive">Recevoir</a><a href="/dashboard">Transferts</a><a href="/help">Aide</a><a href="/mentions">Mentions légales</a>
+      <a data-discord-contact href="#" hidden>Discord</a>
+    </nav>
+    <span class="colophon">Un fichier. Un lien. C’est partagé.</span>
+  </footer>
+  <script src="/assets/site.js?v=16" defer></script>
   <script src="/assets/store.js?v=1" defer></script>
-  <script src="/assets/dashboard.js?v=1" defer></script>
+  <script src="/assets/dashboard.js?v=2" defer></script>
 </body>
 </html>
