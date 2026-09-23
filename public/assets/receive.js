@@ -1,4 +1,4 @@
-const initApp = () => {
+const initReceivePage = () => {
   const form = document.getElementById('receiveForm');
   if (!form) return;
   // Ne jamais initialiser deux fois le même formulaire (navigation PJAX).
@@ -115,5 +115,5 @@ const initApp = () => {
   const code = normalize(params.get('code'));
   if (code) lookup(code, true);
 };
-initApp();
-window.addEventListener('pjax:load', initApp);
+initReceivePage();
+window.addEventListener('pjax:load', initReceivePage);

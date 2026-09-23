@@ -113,6 +113,41 @@ const initSite = () => {
       .catch(() => {});
   }
 
+  // Barre de navigation (même comportement que la landing): fond flouté au
+  // scroll + menu déroulant sur mobile.
+  const nv = document.getElementById('nv');
+  if (nv) {
+    const burger = nv.querySelector('.nv-burger');
+    const setOpen = (open) => {
+      nv.classList.toggle('open', open);
+      if (burger) burger.setAttribute('aria-expanded', String(open));
+    };
+    const onScrollNav = () => nv.classList.toggle('scrolled', window.scrollY > 28);
+    window.addEventListener('scroll', onScrollNav, { passive: true, signal });
+    onScrollNav();
+    setOpen(false);
+    if (burger) burger.addEventListener('click', () => setOpen(!nv.classList.contains('open')), { signal });
+    nv.querySelectorAll('.nv-links a').forEach((link) => link.addEventListener('click', () => setOpen(false), { signal }));
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); }, { signal });
+    document.addEventListener('click', (event) => { if (!nv.contains(event.target)) setOpen(false); }, { signal });
+  }
+
+  // Sommaire Aide / Mentions: surligne la section visible.
+  const docLinks = [...document.querySelectorAll('.docs-nav a[href^="#"]')];
+  if (docLinks.length && 'IntersectionObserver' in window) {
+    const byId = new Map(docLinks.map((link) => [link.getAttribute('href').slice(1), link]));
+    const spy = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        docLinks.forEach((link) => link.classList.remove('current'));
+        const link = byId.get(entry.target.id);
+        if (link) link.classList.add('current');
+      });
+    }, { rootMargin: '-35% 0px -55% 0px' });
+    byId.forEach((_link, id) => { const section = document.getElementById(id); if (section) spy.observe(section); });
+    signal.addEventListener('abort', () => spy.disconnect());
+  }
+
   const parallaxItems = [...document.querySelectorAll('[data-parallax]')];
   const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .doc-section .card')];
 
@@ -260,22 +295,28 @@ window.addEventListener('pjax:load', initSite);
     // On parse à chaque navigation: les nœuds cachés ne sont jamais réutilisés.
     const doc = pjaxParser.parseFromString(html, 'text/html');
     const shell = document.querySelector('.shell');
-    const main = document.querySelector('main');
-    const newMain = doc.querySelector('main');
+    const main = shell ? shell.querySelector('main') : null;
+    const newShell = doc.querySelector('.shell');
+    const newMain = newShell ? newShell.querySelector('main') : null;
+    // Les deux pages doivent partager la même feuille de style: la landing
+    // (WebGL, landing.css) exige toujours un chargement complet.
+    const styleOf = (d) => [...d.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute('href').split('?')[0]).join('|');
+    const sameLayout = styleOf(doc) === styleOf(document);
 
-    if (shell && main && newMain) {
+    if (shell && main && newMain && sameLayout) {
       document.body.className = doc.body.className;
       document.title = doc.title;
-      shell.replaceChild(newMain, main);
+      // Remplace tout le contenu du shell (en-tête de page + main + footer).
+      shell.replaceChildren(...newShell.childNodes);
 
-      const newNav = doc.querySelector('.topbar');
-      const oldNav = document.querySelector('.topbar');
+      const newNav = doc.getElementById('nv');
+      const oldNav = document.getElementById('nv');
       if (newNav && oldNav) {
         oldNav.innerHTML = newNav.innerHTML;
       }
 
-      const newFooter = doc.querySelector('footer');
-      const oldFooter = document.querySelector('footer');
+      const newFooter = doc.querySelector('footer.site-footer');
+      const oldFooter = document.querySelector('footer.site-footer');
       if (newFooter && oldFooter) {
         oldFooter.innerHTML = newFooter.innerHTML;
       }
@@ -314,6 +355,8 @@ window.addEventListener('pjax:load', initSite);
     const url = new URL(a.href);
     if (url.origin !== window.location.origin) return;
     if (url.pathname.startsWith('/api') || url.pathname.startsWith('/download') || url.pathname.startsWith('/view')) return;
+    // La landing (scène WebGL) se charge toujours normalement.
+    if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/home.html') return;
 
     // Handle hash links on the SAME page
     if (url.pathname === window.location.pathname && url.hash) {

@@ -409,7 +409,9 @@ footer.site-footer .colophon { color: var(--ink-faint); font-size: 12.5px; }
   .features { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 820px) {
-  .nv-links { display: none; }
+  /* Mobile : seules les pages Help / Receive restent dans la barre. */
+  .nv-links { gap: 14px; }
+  .nv-links a:not(.nv-app) { display: none; }
   #hero { padding-bottom: 96px; }
   .hero-hint { display: none; }
   .chapter { min-height: 150vh; }
@@ -425,6 +427,11 @@ footer.site-footer .colophon { color: var(--ink-faint); font-size: 12.5px; }
   .nv-brand { font-size: 15px; }
   .nav-auth { flex: none; }
   .discord-auth-btn { white-space: nowrap; min-height: 36px; padding: 8px 10px; font-size: 9px; letter-spacing: .06em; }
+  .nv-links { gap: 12px; margin-left: auto; }
+  .nv-links a { font-size: 12.5px; }
+}
+@media (max-width: 440px) {
+  .nv-cta { display: none; } /* la drop zone est déjà à l'écran */
 }
 
 /* ---------- Motion réduit ---------- */
