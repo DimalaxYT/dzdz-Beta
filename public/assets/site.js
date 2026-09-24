@@ -188,6 +188,8 @@ const initSite = () => {
       && entry.url.origin === window.location.origin
       && !entry.link.target
       && !entry.link.hasAttribute('download')
+      && !entry.link.hasAttribute('data-no-pjax')
+      && !entry.url.searchParams.has('view')
       && isSafePrefetchPath(entry.url.pathname))
     .filter((entry, index, links) => links.findIndex((other) => other.url.href === entry.url.href) === index);
 
@@ -350,10 +352,12 @@ window.addEventListener('pjax:load', initSite);
 
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a');
-    if (!a || !a.href || a.target || a.hasAttribute('download')) return;
+    if (!a || !a.href || a.target || a.hasAttribute('download') || a.hasAttribute('data-no-pjax')) return;
 
     const url = new URL(a.href);
     if (url.origin !== window.location.origin) return;
+    // Changement de version PC / mobile: toujours un chargement complet.
+    if (url.searchParams.has('view')) return;
     if (url.pathname.startsWith('/api') || url.pathname.startsWith('/download') || url.pathname.startsWith('/view')) return;
     // La landing (scène WebGL) se charge toujours normalement.
     if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/home.html') return;

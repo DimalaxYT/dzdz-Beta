@@ -12,6 +12,24 @@ DropQR est un site multi-pages pour transférer temporairement des fichiers entr
 - `/mentions` : mentions légales, confidentialité et données traitées
 - `/t/:id` : page publique de téléchargement
 
+## Version PC / version téléphone (détection automatique)
+
+Les pages `/`, `/upload`, `/receive` et `/dashboard` existent en deux versions, servies sur **la même URL** :
+
+- **PC** : `public/*.html` (landing WebGL 3D, mise en page large) ;
+- **Téléphone** : `public/mobile/*.html` + `assets/mobile.css` + `assets/mobile.js` (pas de WebGL, barre d’onglets en bas, gros boutons, boutons *Appareil photo* / *Galerie*, partage natif, bouton *Coller* pour le code, écran maintenu allumé pendant l’envoi).
+
+La logique métier est partagée (`upload.js`, `receive.js`, `dashboard.js` : mêmes identifiants HTML).
+
+Détection, dans l’ordre de priorité :
+
+1. `?view=mobile`, `?view=desktop` ou `?view=auto` → choix manuel mémorisé dans le cookie `dropqr_view` (liens « Version PC / Version mobile » en pied de page) ;
+2. cookie `dropqr_device` écrit par `assets/device.js`, qui vérifie côté navigateur (écran tactile, taille réelle de l’écran, `navigator.userAgentData`) et recharge **une seule fois** si le serveur s’est trompé ;
+3. Client Hint `Sec-CH-UA-Mobile` ;
+4. User-Agent.
+
+Les tablettes reçoivent la version PC. L’en-tête de réponse `X-DropQR-View` et la route `GET /api/device` indiquent la version choisie et sa source.
+
 ## Backend
 
 Backend Node.js/Express avec :

@@ -109,8 +109,10 @@ const initUploadPage = () => {
     sendButton.disabled = !file || uploadInProgress || tooLarge;
 
     if (!file) {
-      dropTitle.textContent = 'Dépose ton fichier ici';
-      dropSubtitle.textContent = 'ou clique pour le choisir. Un seul fichier par transfert.';
+      // Version téléphone: pas de glisser-déposer, on parle de « toucher ».
+      const isMobileView = document.documentElement.getAttribute('data-view') === 'mobile';
+      dropTitle.textContent = isMobileView ? 'Choisir un fichier' : 'Dépose ton fichier ici';
+      dropSubtitle.textContent = isMobileView ? 'Touche pour parcourir tes fichiers' : 'ou clique pour le choisir. Un seul fichier par transfert.';
       fileChip.classList.remove('visible');
       return;
     }
