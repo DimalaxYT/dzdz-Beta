@@ -48,7 +48,10 @@ const APP_VERSION = '1.12.0';
 const parsedPort = Number(process.env.PORT);
 const PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+// Sur Render, RENDER_EXTERNAL_URL (https://<service>.onrender.com) est injectée
+// automatiquement: elle sert de valeur par défaut si PUBLIC_URL n'est pas définie
+// (liens/QR corrects et keep-alive actif sans configuration).
+const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
 const DISCORD_WEBHOOK_URL = (process.env.DISCORD_WEBHOOK_URL || '').trim();
 const DISCORD_USERNAME = process.env.DISCORD_USERNAME || 'DropQR';
 const DISCORD_MENTION = (process.env.DISCORD_MENTION || '').trim();

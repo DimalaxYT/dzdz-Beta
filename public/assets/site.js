@@ -18,7 +18,7 @@ const PJAX_CACHE_TTL_MS = 60 * 1000;
 const pjaxParser = window.DOMParser ? new DOMParser() : null;
 
 // Seules ces pages peuvent être préchargées en arrière-plan.
-const PREFETCH_WHITELIST = new Set(['/', '/index.html', '/upload', '/receive', '/help', '/mentions', '/dashboard']);
+const PREFETCH_WHITELIST = new Set(['/', '/upload', '/receive', '/help', '/mentions', '/dashboard']);
 
 const isSafePrefetchPath = (pathname) => PREFETCH_WHITELIST.has(pathname);
 
@@ -360,7 +360,7 @@ window.addEventListener('pjax:load', initSite);
     if (url.searchParams.has('view')) return;
     if (url.pathname.startsWith('/api') || url.pathname.startsWith('/download') || url.pathname.startsWith('/view')) return;
     // La landing (scène WebGL) se charge toujours normalement.
-    if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/home.html') return;
+    if (url.pathname === '/' || url.pathname === '/home.html') return;
 
     // Handle hash links on the SAME page
     if (url.pathname === window.location.pathname && url.hash) {
