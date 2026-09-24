@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr" data-view="mobile" data-switchable>
+<head>
+  <meta charset="utf-8">
+  <script src="/assets/device.js?v=1"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="DropQR — partage de fichiers gratuit et sans limite. Dépose un fichier, obtiens un lien et un QR code.">
+  <title>DropQR — Partage sans limites</title>
+  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/mobile.css?v=1">
+</head>
+<body class="m-body">
+  <header class="nv m-top" id="nv">
+    <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
+    <div class="nv-right"><div class="nav-auth" data-discord-auth></div></div>
+  </header>
+
+  <div class="shell m-shell">
+    <main class="m-main m-home">
+      <section class="m-hero">
+        <p class="m-eyebrow">Gratuit · Sans compte · <span data-max-file-size>10 Go</span></p>
+        <h1>Partage <span class="thin">sans</span> limites.</h1>
+        <p class="lead">Photos, vidéos, fichiers : envoie-les d’un téléphone à n’importe quel appareil avec un code ou un QR.</p>
+      </section>
+
+      <a class="m-action m-action-send" href="/upload">
+        <span class="m-action-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+        </span>
+        <span class="m-action-text"><strong>Envoyer un fichier</strong><span>Photo, vidéo, document…</span></span>
+        <span class="m-action-arrow" aria-hidden="true">→</span>
+      </a>
+
+      <section class="m-card m-receive-quick" aria-labelledby="quickReceiveTitle">
+        <div class="m-card-head">
+          <span class="m-action-ico small" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m18 10-6 6-6-6"/><path d="M4 20h16"/></svg>
+          </span>
+          <div><h2 id="quickReceiveTitle">Recevoir</h2><p>Entre le code reçu, ou scanne le QR avec l’appareil photo.</p></div>
+        </div>
+        <form class="m-code-form" action="/receive" method="get">
+          <input class="code-input" name="code" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="CODE" maxlength="32" required aria-label="Code DropQR">
+          <button class="primary-btn" type="submit">Ouvrir</button>
+        </form>
+      </section>
+
+      <section class="m-steps" aria-label="Comment ça marche">
+        <div class="m-step"><span>01</span><strong>Dépose</strong><p>Choisis un fichier ou prends une photo.</p></div>
+        <div class="m-step"><span>02</span><strong>Partage</strong><p>Un code, un lien et un QR sont créés.</p></div>
+        <div class="m-step"><span>03</span><strong>Reçois</strong><p>L’autre appareil scanne et télécharge.</p></div>
+      </section>
+
+      <section class="m-features" aria-label="Pourquoi DropQR">
+        <article><h3>Illimité</h3><p>Pas de quota, jusqu’à <span data-max-file-size>10 Go</span> par fichier.</p></article>
+        <article><h3>Rapide</h3><p>Envoi en morceaux parallèles.</p></article>
+        <article><h3>Privé</h3><p>Supprimé après téléchargement.</p></article>
+        <article><h3>QR instantané</h3><p>Pointe une caméra, c’est reçu.</p></article>
+      </section>
+
+      <section class="m-faq" aria-labelledby="faqTitle">
+        <h2 id="faqTitle">Questions</h2>
+        <details>
+          <summary>C’est quoi DropQR ?</summary>
+          <p>Un service gratuit pour transférer un fichier instantanément : dépose-le, récupère un lien et un QR code, et la personne qui l’ouvre reçoit le fichier. Aucun compte.</p>
+        </details>
+        <details>
+          <summary>Combien de temps le lien reste actif ?</summary>
+          <p>Le fichier est supprimé après le premier téléchargement ou à la fin de sa durée de vie (de 5 minutes à 24 h).</p>
+        </details>
+        <details>
+          <summary>Comment recevoir sur mon téléphone ?</summary>
+          <p>Ouvre l’appareil photo et vise le QR affiché sur l’autre écran, ou tape le code dans l’onglet Recevoir.</p>
+        </details>
+      </section>
+    </main>
+
+    <footer class="site-footer m-footer">
+      <nav aria-label="Liens">
+        <a href="/help">Aide</a>
+        <a href="/mentions">Mentions</a>
+        <a class="discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
+        <a class="view-switch-link" data-view-switch href="?view=desktop">Version PC</a>
+        <a class="view-switch-link" data-view-auto href="?view=auto" hidden>Auto</a>
+      </nav>
+      <span class="colophon">DropQR — drop, share, done.</span>
+    </footer>
+
+    <nav class="m-tabbar" aria-label="Navigation principale">
+      <a href="/" class="active" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span>Accueil</span></a>
+      <a href="/upload"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg><span>Envoyer</span></a>
+      <a href="/receive"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12"/><path d="m18 10-6 6-6-6"/><path d="M4 20h16"/></svg><span>Recevoir</span></a>
+      <a href="/dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg><span>Transferts</span></a>
+    </nav>
+  </div>
+  <script src="/assets/site.js?v=16" defer></script>
+  <script src="/assets/mobile.js?v=1" defer></script>
+</body>
+</html>

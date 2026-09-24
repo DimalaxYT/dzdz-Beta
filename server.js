@@ -48,7 +48,10 @@ const APP_VERSION = '1.12.0';
 const parsedPort = Number(process.env.PORT);
 const PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+// Sur Render, RENDER_EXTERNAL_URL (https://<service>.onrender.com) est injectée
+// automatiquement: elle sert de valeur par défaut si PUBLIC_URL n'est pas définie
+// (liens/QR corrects et keep-alive actif sans configuration).
+const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
 const DISCORD_WEBHOOK_URL = (process.env.DISCORD_WEBHOOK_URL || '').trim();
 const DISCORD_USERNAME = process.env.DISCORD_USERNAME || 'DropQR';
 const DISCORD_MENTION = (process.env.DISCORD_MENTION || '').trim();
@@ -1094,19 +1097,99 @@ app.use('/assets', (req, res, next) => {
   maxAge: '1d'
 }));
 
-function sendPage(res, fileName) {
-  // Les pages sont statiques et leurs assets sont versionnés: le navigateur peut
-  // les réutiliser immédiatement lors du passage d'un écran à l'autre.
-  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-  return res.sendFile(path.join(PUBLIC_DIR, fileName));
+// ---------------------------------------------------------------------------
+// Détection automatique PC / téléphone
+// ---------------------------------------------------------------------------
+// Ordre de priorité (le premier qui répond gagne):
+//   1. ?view=mobile | ?view=desktop | ?view=auto  -> choix manuel (mémorisé en cookie)
+//   2. cookie dropqr_view                          -> choix manuel mémorisé
+//   3. cookie dropqr_device                        -> correction envoyée par device.js
+//                                                     (écran tactile étroit, iPad qui se
+//                                                     déguise en Mac, etc.)
+//   4. en-tête Client Hint Sec-CH-UA-Mobile        -> Chrome / Edge / Samsung Internet
+//   5. User-Agent                                  -> tous les autres navigateurs
+// Les tablettes reçoivent la version PC (grand écran), sauf choix manuel.
+const DEVICE_VIEW_COOKIE = 'dropqr_view';     // choix manuel de l'utilisateur
+const DEVICE_AUTO_COOKIE = 'dropqr_device';   // détection côté navigateur (device.js)
+const DEVICE_VIEWS = new Set(['mobile', 'desktop']);
+const MOBILE_UA_RE = /Mobi|iPhone|iPod|Android.+Mobile|Windows Phone|IEMobile|BlackBerry|BB10|Opera Mini|webOS|Kindle Fire.+Mobile|SamsungBrowser.+Mobile/i;
+const MOBILE_PAGES = new Set(['home.html', 'upload.html', 'receive.html', 'dashboard.html']);
+
+function isMobileUserAgent(userAgent) {
+  const ua = String(userAgent || '');
+  if (!ua) return false;
+  // Les tablettes Android n'ont pas "Mobile" dans leur UA: elles restent en version PC.
+  return MOBILE_UA_RE.test(ua);
 }
 
-app.get('/', (_req, res) => sendPage(res, 'home.html'));
-app.get('/upload', (_req, res) => sendPage(res, 'upload.html'));
-app.get('/dashboard', (_req, res) => sendPage(res, 'dashboard.html'));
-app.get('/receive', (_req, res) => sendPage(res, 'receive.html'));
-app.get('/help', (_req, res) => sendPage(res, 'help.html'));
-app.get('/mentions', (_req, res) => sendPage(res, 'mentions.html'));
+// Cookie de préférence d'affichage: volontairement lisible par device.js (pas
+// HttpOnly) — il ne contient que "mobile" ou "desktop", aucune donnée sensible.
+function setViewCookie(res, req, name, value, maxAgeSec) {
+  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', 'SameSite=Lax', `Max-Age=${Math.floor(maxAgeSec)}`];
+  if (isHttpsRequest(req)) parts.push('Secure');
+  const previous = res.getHeader('Set-Cookie');
+  const headerValue = parts.join('; ');
+  res.setHeader('Set-Cookie', previous ? [].concat(previous, headerValue) : headerValue);
+}
+
+function detectDeviceView(req) {
+  const cookies = parseCookies(req);
+  const manual = String(cookies[DEVICE_VIEW_COOKIE] || '').toLowerCase();
+  if (DEVICE_VIEWS.has(manual)) return { view: manual, source: 'manual' };
+
+  const auto = String(cookies[DEVICE_AUTO_COOKIE] || '').toLowerCase();
+  if (DEVICE_VIEWS.has(auto)) return { view: auto, source: 'browser' };
+
+  const hint = String(req.get('sec-ch-ua-mobile') || '').trim();
+  if (hint === '?1') return { view: 'mobile', source: 'client-hint' };
+  if (hint === '?0') return { view: 'desktop', source: 'client-hint' };
+
+  return { view: isMobileUserAgent(req.get('user-agent')) ? 'mobile' : 'desktop', source: 'user-agent' };
+}
+
+// ?view=mobile|desktop|auto : mémorise (ou oublie) le choix puis redirige vers
+// l'URL propre, pour que les liens partagés ne forcent pas la version des autres.
+app.use((req, res, next) => {
+  if ((req.method !== 'GET' && req.method !== 'HEAD') || req.path.startsWith('/api/') || req.path.startsWith('/assets/')) return next();
+  if (!Object.prototype.hasOwnProperty.call(req.query, 'view')) return next();
+  const wanted = String(req.query.view || '').toLowerCase();
+  if (DEVICE_VIEWS.has(wanted)) {
+    setViewCookie(res, req, DEVICE_VIEW_COOKIE, wanted, 180 * 24 * 3600);
+  } else if (wanted === 'auto') {
+    setViewCookie(res, req, DEVICE_VIEW_COOKIE, '', 0);
+    setViewCookie(res, req, DEVICE_AUTO_COOKIE, '', 0);
+  } else {
+    return next();
+  }
+  const params = new URLSearchParams(req.query);
+  params.delete('view');
+  const query = params.toString();
+  res.setHeader('Cache-Control', 'no-store');
+  return res.redirect(302, `${req.path}${query ? `?${query}` : ''}`);
+});
+
+function sendPage(req, res, fileName) {
+  const { view, source } = detectDeviceView(req);
+  const useMobile = view === 'mobile' && MOBILE_PAGES.has(fileName);
+  // La même URL renvoie deux HTML différents selon l'appareil: les caches
+  // (navigateur, CDN) doivent le savoir.
+  res.setHeader('Vary', 'User-Agent, Sec-CH-UA-Mobile, Cookie');
+  res.setHeader('Accept-CH', 'Sec-CH-UA-Mobile');
+  res.setHeader('X-DropQR-View', `${view}; source=${source}`);
+  res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+  return res.sendFile(path.join(PUBLIC_DIR, useMobile ? 'mobile' : '', fileName));
+}
+
+app.get('/', (req, res) => sendPage(req, res, 'home.html'));
+app.get('/upload', (req, res) => sendPage(req, res, 'upload.html'));
+app.get('/dashboard', (req, res) => sendPage(req, res, 'dashboard.html'));
+app.get('/receive', (req, res) => sendPage(req, res, 'receive.html'));
+app.get('/help', (req, res) => sendPage(req, res, 'help.html'));
+app.get('/mentions', (req, res) => sendPage(req, res, 'mentions.html'));
+app.get('/api/device', (req, res) => {
+  res.setHeader('Vary', 'User-Agent, Sec-CH-UA-Mobile, Cookie');
+  res.json(detectDeviceView(req));
+});
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -1887,6 +1970,8 @@ function renderSiteFooter() {
         <a href="/help">Help</a>
         <a href="/mentions">Legal</a>
         <a class="discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
+        <a class="view-switch-link" data-view-switch href="?view=mobile">Version mobile</a>
+        <a class="view-switch-link" data-view-auto href="?view=auto" hidden>Auto</a>
       </nav>
       <span class="colophon">Free unlimited file sharing — drop, share, done.</span>
     </footer>`;
@@ -1899,6 +1984,7 @@ function renderSharePage(req, meta) {
 <html lang="fr">
 <head>
   <meta charset="utf-8">
+  <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
@@ -1929,7 +2015,7 @@ ${renderSiteHeader()}
     </main>
 ${renderSiteFooter()}
   </div>
-  <script src="/assets/site.js?v=15" defer></script>
+  <script src="/assets/site.js?v=16" defer></script>
 </body>
 </html>`;
 }
@@ -1939,6 +2025,7 @@ function renderMessagePage(title, message) {
 <html lang="fr">
 <head>
   <meta charset="utf-8">
+  <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
@@ -1957,7 +2044,7 @@ ${renderSiteHeader()}
     </main>
 ${renderSiteFooter()}
   </div>
-  <script src="/assets/site.js?v=15" defer></script>
+  <script src="/assets/site.js?v=16" defer></script>
 </body>
 </html>`;
 }

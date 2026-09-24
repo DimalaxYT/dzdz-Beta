@@ -12,6 +12,24 @@ DropQR est un site multi-pages pour transférer temporairement des fichiers entr
 - `/mentions` : mentions légales, confidentialité et données traitées
 - `/t/:id` : page publique de téléchargement
 
+## Version PC / version téléphone (détection automatique)
+
+Les pages `/`, `/upload`, `/receive` et `/dashboard` existent en deux versions, servies sur **la même URL** :
+
+- **PC** : `public/*.html` (landing WebGL 3D, mise en page large) ;
+- **Téléphone** : `public/mobile/*.html` + `assets/mobile.css` + `assets/mobile.js` (pas de WebGL, barre d’onglets en bas, gros boutons, boutons *Appareil photo* / *Galerie*, partage natif, bouton *Coller* pour le code, écran maintenu allumé pendant l’envoi).
+
+La logique métier est partagée (`upload.js`, `receive.js`, `dashboard.js` : mêmes identifiants HTML).
+
+Détection, dans l’ordre de priorité :
+
+1. `?view=mobile`, `?view=desktop` ou `?view=auto` → choix manuel mémorisé dans le cookie `dropqr_view` (liens « Version PC / Version mobile » en pied de page) ;
+2. cookie `dropqr_device` écrit par `assets/device.js`, qui vérifie côté navigateur (écran tactile, taille réelle de l’écran, `navigator.userAgentData`) et recharge **une seule fois** si le serveur s’est trompé ;
+3. Client Hint `Sec-CH-UA-Mobile` ;
+4. User-Agent.
+
+Les tablettes reçoivent la version PC. L’en-tête de réponse `X-DropQR-View` et la route `GET /api/device` indiquent la version choisie et sa source.
+
 ## Backend
 
 Backend Node.js/Express avec :
@@ -59,13 +77,11 @@ PUBLIC_URL="http://192.168.1.25:3000" npm start
 
 Puis ouvre `http://192.168.1.25:3000` sur le téléphone.
 
-## Déploiement Netlify : attention
+## Déploiement sur Render
 
-Si tu as mis le ZIP complet sur Netlify en Drag & Drop et que tu vois une page `Page not found`, c’est parce que Netlify sert du statique et ne lance pas `server.js`.
+Le dépôt contient un `render.yaml` (Blueprint) : sur Render, **New → Blueprint**, choisis ce dépôt, et le service web Node est créé automatiquement (`npm install` puis `npm start`, vérification de santé sur `/api/health`).
 
-DropQR a besoin d’un backend Node.js pour recevoir les fichiers, générer les QR codes, servir les téléchargements et supprimer automatiquement les documents. Pour la version complète, utilise plutôt Render, Railway, Fly.io ou un VPS.
-
-J’ai quand même ajouté `netlify.toml`, `public/_redirects` et une page d’explication pour éviter le 404 si tu testes en statique, mais l’upload ne fonctionnera pas sans backend.
+Render injecte `PORT` et `RENDER_EXTERNAL_URL` : DropQR utilise cette dernière comme `PUBLIC_URL` par défaut, donc les liens / QR codes et le keep-alive fonctionnent sans configuration. Définis `PUBLIC_URL` seulement si tu utilises un domaine personnalisé.
 
 ## Important pour la preview Arena/e2b
 
@@ -165,7 +181,7 @@ MAX_FILE_SIZE_MB=2048 npm start
 | `TRUST_PROXY` | `1` | Nombre de reverse proxies de confiance (`false` pour désactiver, `2`… pour enchaîner) |
 | `CORS_ORIGINS` | vide | Origines autorisées pour l'API, séparées par des virgules (`*` pour tout autoriser — déconseillé) ; vide = same-origin uniquement |
 | `CHUNK_RATE_LIMIT` | `6000` | Nombre maximal de requêtes morceaux par IP par fenêtre de 10 minutes |
-| `PUBLIC_URL` | vide | URL mise dans le QR code (sert aussi d'URL de keep-alive) |
+| `PUBLIC_URL` | `RENDER_EXTERNAL_URL` sur Render, sinon vide | URL mise dans le QR code (sert aussi d'URL de keep-alive) |
 | `KEEP_ALIVE` | `true` | Auto-ping anti-veille Render (`false` pour désactiver) |
 | `KEEP_ALIVE_URL` | vide | URL pingée par le keep-alive (défaut : `PUBLIC_URL`) |
 | `KEEP_ALIVE_INTERVAL_MINUTES` | `10` | Intervalle du keep-alive, borné entre 1 et 14 minutes |

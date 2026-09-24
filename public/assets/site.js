@@ -18,7 +18,7 @@ const PJAX_CACHE_TTL_MS = 60 * 1000;
 const pjaxParser = window.DOMParser ? new DOMParser() : null;
 
 // Seules ces pages peuvent être préchargées en arrière-plan.
-const PREFETCH_WHITELIST = new Set(['/', '/index.html', '/upload', '/receive', '/help', '/mentions', '/dashboard']);
+const PREFETCH_WHITELIST = new Set(['/', '/upload', '/receive', '/help', '/mentions', '/dashboard']);
 
 const isSafePrefetchPath = (pathname) => PREFETCH_WHITELIST.has(pathname);
 
@@ -188,6 +188,8 @@ const initSite = () => {
       && entry.url.origin === window.location.origin
       && !entry.link.target
       && !entry.link.hasAttribute('download')
+      && !entry.link.hasAttribute('data-no-pjax')
+      && !entry.url.searchParams.has('view')
       && isSafePrefetchPath(entry.url.pathname))
     .filter((entry, index, links) => links.findIndex((other) => other.url.href === entry.url.href) === index);
 
@@ -350,13 +352,15 @@ window.addEventListener('pjax:load', initSite);
 
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a');
-    if (!a || !a.href || a.target || a.hasAttribute('download')) return;
+    if (!a || !a.href || a.target || a.hasAttribute('download') || a.hasAttribute('data-no-pjax')) return;
 
     const url = new URL(a.href);
     if (url.origin !== window.location.origin) return;
+    // Changement de version PC / mobile: toujours un chargement complet.
+    if (url.searchParams.has('view')) return;
     if (url.pathname.startsWith('/api') || url.pathname.startsWith('/download') || url.pathname.startsWith('/view')) return;
     // La landing (scène WebGL) se charge toujours normalement.
-    if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/home.html') return;
+    if (url.pathname === '/' || url.pathname === '/home.html') return;
 
     // Handle hash links on the SAME page
     if (url.pathname === window.location.pathname && url.hash) {
