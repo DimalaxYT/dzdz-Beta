@@ -1,6 +1,6 @@
 'use strict';
 
-const initApp = () => {
+const initUploadPage = () => {
   const form = document.getElementById('uploadForm');
   if (!form) return;
   // Ne jamais initialiser deux fois le même formulaire (double appel possible
@@ -585,5 +585,5 @@ const initApp = () => {
   resetProgress();
   loadConfig();
 };
-initApp();
-window.addEventListener('pjax:load', initApp);
+initUploadPage();
+window.addEventListener('pjax:load', initUploadPage);

@@ -1858,6 +1858,40 @@ function publicTransferPayload(req, meta) {
   };
 }
 
+// En-tête et pied de page partagés avec les pages statiques (design landing).
+function renderSiteHeader() {
+  return `  <header class="nv" id="nv">
+    <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
+    <nav class="nv-links" id="nv-links" aria-label="Primary">
+      <a href="/#product">Product</a>
+      <a href="/#how">How it works</a>
+      <a href="/#faq">FAQ</a>
+      <a class="nv-app" href="/help"><span class="ico" aria-hidden="true">?</span>Help</a>
+      <a class="nv-app" href="/receive"><span class="ico" aria-hidden="true">↓</span>Receive</a>
+    </nav>
+    <div class="nv-right">
+      <div class="nav-auth" data-discord-auth></div>
+      <a class="nv-cta" href="/upload">Start sharing <span class="arrow" aria-hidden="true">→</span></a>
+      <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nv-links"><span></span></button>
+    </div>
+  </header>`;
+}
+
+function renderSiteFooter() {
+  return `    <footer class="site-footer">
+      <span class="foot-brand">DropQR</span>
+      <nav aria-label="App">
+        <a href="/upload">Upload</a>
+        <a href="/receive">Receive</a>
+        <a href="/dashboard">Transfers</a>
+        <a href="/help">Help</a>
+        <a href="/mentions">Legal</a>
+        <a class="discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
+      </nav>
+      <span class="colophon">Free unlimited file sharing — drop, share, done.</span>
+    </footer>`;
+}
+
 function renderSharePage(req, meta) {
   const payload = publicTransferPayload(req, meta);
   const expiresAt = new Date(meta.expiresAt).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
@@ -1866,15 +1900,15 @@ function renderSharePage(req, meta) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
+  <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
   <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <link rel="stylesheet" href="/assets/pages.css?v=3">
 </head>
 <body>
+${renderSiteHeader()}
   <div class="shell share-shell">
     <main class="share-page card">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
       <div class="page-code">PUBLIC / DOWNLOAD</div>
       <h1>Le fichier est prêt.</h1>
       <p class="lead">Ce passage est temporaire. Récupère le fichier avant son expiration.</p>
@@ -1893,8 +1927,9 @@ function renderSharePage(req, meta) {
       <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
+${renderSiteFooter()}
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
+  <script src="/assets/site.js?v=15" defer></script>
 </body>
 </html>`;
 }
@@ -1905,23 +1940,24 @@ function renderMessagePage(title, message) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d0e">
+  <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
   <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/app.css?v=20">
+  <link rel="stylesheet" href="/assets/pages.css?v=3">
 </head>
 <body>
+${renderSiteHeader()}
   <div class="shell share-shell">
     <main class="share-page card">
-      <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo.svg?v=12" alt="" aria-hidden="true"></span><span>DropQR</span></a>
       <div class="page-code">SYSTEM / NOTICE</div>
       <h1>${escapeHtml(title)}</h1>
       <p class="lead">${escapeHtml(message)}</p>
       <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
+${renderSiteFooter()}
   </div>
-  <script src="/assets/site.js?v=14" defer></script>
+  <script src="/assets/site.js?v=15" defer></script>
 </body>
 </html>`;
 }
