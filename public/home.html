@@ -4,16 +4,20 @@
   <meta charset="utf-8">
   <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090b">
+  <meta name="theme-color" content="#07080a">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="DropQR — free unlimited file sharing. Drop a file, get a link and a QR code. Fast, private, no account.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <meta name="description" content="DropQR — free unlimited file sharing. Drop a file, it becomes a link, a code and a QR. Fast, private, temporary. No account needed.">
   <meta property="og:title" content="DropQR — Share without limits">
-  <meta property="og:description" content="Drop a file. It becomes shareable. Get a link or a QR code. Done.">
+  <meta property="og:description" content="Drop a file. It becomes shareable. Get a link, a code and a QR. Done.">
   <meta property="og:type" content="website">
   <title>DropQR — Share without limits</title>
-  <link rel="stylesheet" href="/assets/landing.css?v=3">
+  <link rel="stylesheet" href="/assets/dropqr.css?v=4">
+  <link rel="stylesheet" href="/assets/landing.css?v=4">
   <script src="/assets/vendor/qrcode.min.js?v=1" defer></script>
-  <script type="module" src="/assets/landing3d.js?v=1"></script>
+  <script src="/assets/store.js?v=2" defer></script>
+  <script src="/assets/ui.js?v=1" defer></script>
+  <script type="module" src="/assets/landing3d.js?v=2"></script>
 </head>
 <body>
   <canvas id="gl" aria-hidden="true"></canvas>
@@ -21,7 +25,7 @@
 
   <header class="nv" id="nv">
     <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
-    <nav class="nv-links" aria-label="Primary">
+    <nav class="nv-links" id="nv-links" aria-label="Primary">
       <a href="#product">Product</a>
       <a href="#how">How it works</a>
       <a href="#faq">FAQ</a>
@@ -30,30 +34,36 @@
     </nav>
     <div class="nv-right">
       <div class="nav-auth" data-discord-auth></div>
-      <a class="nv-cta" href="/" id="cta-start">Start sharing <span class="arrow" aria-hidden="true">→</span></a>
+      <a class="nv-cta" href="/upload" id="cta-start">Start sharing <span class="arrow" aria-hidden="true">→</span></a>
     </div>
   </header>
 
   <main>
-    <!-- ============ HERO ============ -->
+    <!-- ============ HERO — the port ============ -->
     <section id="hero">
       <div class="hero-copy">
         <p class="hero-eyebrow">Free · Unlimited · No account</p>
-        <h1>Share <span class="thin">without</span> limits.</h1>
-        <p class="lead">Photos, videos and files. Drop them. Share them. Done.</p>
+        <h1 class="maskline"><span>Share <span class="thin">without</span> limits.</span></h1>
+        <p class="lead">Photos, videos, archives. Drop them — they become a link, a code, a QR. The other device just scans.</p>
         <div id="dropzone" role="button" tabindex="0" aria-label="Drop a file here, or press Enter to choose a file">
+          <span class="brackets" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <div class="dz-text">
             <div class="dz-title">Drop anything here</div>
-            <div class="dz-sub">or choose files</div>
+            <div class="dz-sub">or choose files — one file becomes one passage</div>
           </div>
           <div class="dz-icon" aria-hidden="true"></div>
         </div>
+        <p class="hero-alts">
+          Or go straight to the app: <a href="/upload">Send console <span class="arr" aria-hidden="true">→</span></a>
+          <span aria-hidden="true">·</span>
+          <a href="/receive">Receive with a code</a>
+        </p>
         <p class="webgl-note">Your browser could not start WebGL — everything still works, only the 3D atmosphere is disabled.</p>
       </div>
       <div class="hero-hint" aria-hidden="true"><span>Scroll</span><span class="line"></span></div>
     </section>
 
-    <!-- ============ SCROLL STORY (les mots vivent dans le canvas 3D) ============ -->
+    <!-- ============ SCROLL STORY (words live inside the 3D world) ============ -->
     <div id="story">
       <span id="how" class="sr-only">How it works</span>
       <section class="chapter" aria-label="Step 1: drop your files">
@@ -69,9 +79,20 @@
       <section class="chapter" aria-label="Step 3: scan the QR code">
         <div class="chapter-tag" aria-hidden="true"><span class="num">03</span><span class="lbl">Scan</span></div>
         <h2 class="sr-only">Scan.</h2>
-        <p class="sr-only">A floating QR code is scanned and turns into a shareable link, then back into the file.</p>
+        <p class="sr-only">A floating QR code is scanned and turns back into the file on the other device.</p>
       </section>
     </div>
+
+    <!-- ============ LIVE BAND ============ -->
+    <section id="live" aria-label="Live activity on this instance">
+      <div class="live-inner">
+        <div class="live-item"><span class="live-n" id="live-transfers">—</span><span class="live-l">passages open right now</span></div>
+        <div class="live-flow" aria-hidden="true"></div>
+        <div class="live-item"><span class="live-n" id="live-bytes">—</span><span class="live-l">stored, waiting to be transferred</span></div>
+        <div class="live-flow" aria-hidden="true"></div>
+        <div class="live-item"><span class="live-n">TTL</span><span class="live-l">everything auto-purges — 5 min to 24 h</span></div>
+      </div>
+    </section>
 
     <!-- ============ FEATURES ============ -->
     <section id="product">
@@ -84,28 +105,28 @@
           <div class="mini-view" aria-hidden="true"></div>
           <div class="f-body">
             <h3>Unlimited</h3>
-            <p>No size caps, no quotas. Photos, 4K video, archives — the stream never ends.</p>
+            <p>No quotas, no account walls. Up to <strong data-max-file-size>10 Go</strong> per file — photos, 4K video, archives. The stream doesn’t end.</p>
           </div>
         </article>
         <article class="feature">
           <div class="mini-view" aria-hidden="true"></div>
           <div class="f-body">
             <h3>Fast</h3>
-            <p>A direct beam between two devices. Your link is alive before you blink.</p>
+            <p>Your file is chopped into parallel streams. A direct beam between two devices — the link is alive before you blink.</p>
           </div>
         </article>
         <article class="feature">
           <div class="mini-view" aria-hidden="true"></div>
           <div class="f-body">
             <h3>Private</h3>
-            <p>Files travel inside a sealed, temporary passage — auto-deleted after download.</p>
+            <p>Files travel inside a sealed, temporary passage — auto-deleted after the first download or when the timer runs out.</p>
           </div>
         </article>
         <article class="feature">
           <div class="mini-view" aria-hidden="true"></div>
           <div class="f-body">
             <h3>Instant QR</h3>
-            <p>Every upload assembles into a scannable QR. Point a camera, receive the file.</p>
+            <p>Every upload assembles into a scannable QR. Point a camera — phone opens the file. No app, no pairing.</p>
           </div>
         </article>
       </div>
@@ -120,35 +141,52 @@
       <div class="faq-wrap">
         <details>
           <summary>What is DropQR?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">DropQR is a free file-sharing service built for instant transfers. Drop a file, get a link and a QR code — whoever opens it receives the file. No account, no friction.</p>
+          <p class="answer">A free file-sharing service built for instant transfers. Drop a file → get a link, a short code and a QR → whoever opens it receives the file. The passage is temporary; then the file simply ceases to exist.</p>
         </details>
         <details>
           <summary>Is it really unlimited?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">Yes. There are no quotas and no size caps: send a single photo or a multi-gigabyte video project, as many times as you want.</p>
+          <p class="answer">No quotas, no accounts, no size games: send one photo or a multi-gigabyte project, as often as you want. The hard limit is whatever the host disk and your connection can carry — currently up to <span data-max-file-size>10 Go</span> per file.</p>
         </details>
         <details>
           <summary>How long does a link stay alive?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">By design, transfers are temporary: the file is removed after the first download or when its timer runs out — short-lived by default, extendable up to 24 h per transfer.</p>
+          <p class="answer">You choose at send time, from 5 minutes to 24 hours. It also dies instantly after the first download if you ticked that option — and you can cut it yourself anytime with your private key from the Transfers page.</p>
         </details>
         <details>
           <summary>How do I receive a file?<span class="plus" aria-hidden="true"></span></summary>
-          <p class="answer">Open the shared link, scan the QR code with any camera, or type the transfer code on the receive page. The download starts instantly.</p>
+          <p class="answer">Open the shared link, scan the QR with your phone camera, or type the 7-character code on the receive page. Videos stream inline with a built-in player; everything else downloads directly.</p>
         </details>
+        <details>
+          <summary>Do I need an account?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="answer">No. DropQR is anonymous by design. The optional Discord sign-in only labels your uploads for the instance staff — sending and receiving never require it.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============ FINAL BAND ============ -->
+    <section id="cta-band">
+      <div class="cta-inner">
+        <p class="kicker">One drop away</p>
+        <h2>Open a passage<span class="thin"> now.</span></h2>
+        <div class="cta-row">
+          <a class="btn btn-solid mag" href="/upload">Open the send console <span class="arr" aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="/receive">Receive a file</a>
+        </div>
       </div>
     </section>
 
     <footer class="site-footer">
       <span class="foot-brand">DropQR</span>
       <nav aria-label="App">
-        <a href="/upload">Upload</a>
+        <a href="/upload">Send</a>
         <a href="/receive">Receive</a>
         <a href="/dashboard">Transfers</a>
+        <a href="/account">Account</a>
         <a href="/help">Help</a>
         <a href="/mentions">Legal</a>
         <a class="view-switch-link" data-view-switch href="?view=mobile">Version mobile</a>
         <a class="view-switch-link" data-view-auto href="?view=auto" hidden>Auto</a>
       </nav>
-      <span class="colophon">Free unlimited file sharing — drop, share, done.</span>
+      <span class="colophon">drop · share · done.</span>
     </footer>
   </main>
 
@@ -161,8 +199,8 @@
         <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
           <defs>
             <linearGradient id="upGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#8b7cff"/>
-              <stop offset="1" stop-color="#5b8cff"/>
+              <stop offset="0" stop-color="#dcff5e"/>
+              <stop offset="1" stop-color="#83e1cf"/>
             </linearGradient>
           </defs>
           <circle class="track" cx="66" cy="66" r="58" fill="none" stroke-width="3"/>
@@ -187,6 +225,7 @@
         <button class="btn btn-ghost" id="btn-download" type="button">Download QR</button>
         <button class="btn btn-linkish" id="btn-again" type="button">Share another file</button>
       </div>
+      <p class="result-also">Saved to your <a href="/dashboard">transfers</a> with its delete key.</p>
     </div>
   </div>
 

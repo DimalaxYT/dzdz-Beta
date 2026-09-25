@@ -17,8 +17,9 @@ const pjaxCache = new Map(); // pathname+search -> { text, storedAt }
 const PJAX_CACHE_TTL_MS = 60 * 1000;
 const pjaxParser = window.DOMParser ? new DOMParser() : null;
 
-// Seules ces pages peuvent être préchargées en arrière-plan.
-const PREFETCH_WHITELIST = new Set(['/', '/upload', '/receive', '/help', '/mentions', '/dashboard']);
+// Seules ces pages peuvent être préchargées en arrière-plan (jamais /download,
+// /view, /t, /c : un préchargement déclencherait un téléchargement réel).
+const PREFETCH_WHITELIST = new Set(['/', '/upload', '/receive', '/help', '/mentions', '/dashboard', '/login', '/account']);
 
 const isSafePrefetchPath = (pathname) => PREFETCH_WHITELIST.has(pathname);
 
@@ -42,17 +43,24 @@ const initSite = () => {
   const authSlots = [...document.querySelectorAll('[data-discord-auth]')];
   const maxSizeLabels = [...document.querySelectorAll('[data-max-file-size]')];
 
-  // Bouton / état "Se connecter avec Discord" dans la barre de navigation.
+  // Bouton / état "connexion Discord" dans la barre de navigation.
+  // Logique préservée (session cookieHttpOnly posée par le serveur) ; l'UI
+  // ajoute simplement l'accès au compte quand une session existe.
   if (authSlots.length) {
     fetch('/api/auth/me', { cache: 'no-store', credentials: 'same-origin' })
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
-        if (!payload || signal.aborted || !payload.configured) return;
+        if (!payload || signal.aborted) return;
+        const current = `${window.location.pathname}${window.location.search}`;
         authSlots.forEach((slot) => {
           slot.textContent = '';
           if (payload.user) {
             const chip = document.createElement('span');
             chip.className = 'discord-chip';
+
+            const link = document.createElement('a');
+            link.href = '/account';
+            link.title = 'Voir ton compte DropQR';
 
             const avatar = document.createElement('img');
             avatar.src = payload.user.avatar;
@@ -64,7 +72,8 @@ const initSite = () => {
             const name = document.createElement('span');
             name.className = 'discord-chip-name';
             name.textContent = payload.user.globalName || payload.user.username;
-            name.title = `Connecté avec Discord: @${payload.user.username}`;
+
+            link.append(avatar, name);
 
             const logout = document.createElement('button');
             logout.type = 'button';
@@ -79,14 +88,21 @@ const initSite = () => {
               window.location.reload();
             });
 
-            chip.append(avatar, name, logout);
+            chip.append(link, logout);
             slot.appendChild(chip);
+          } else if (payload.configured) {
+            const link = document.createElement('a');
+            link.className = 'discord-auth-btn';
+            link.href = `/api/auth/discord/login?next=${encodeURIComponent(current)}`;
+            link.innerHTML = '<span class="dot" aria-hidden="true"></span>Discord';
+            link.title = 'Se connecter avec Discord (pour que le staff sache qui envoie)';
+            slot.appendChild(link);
           } else {
             const link = document.createElement('a');
             link.className = 'discord-auth-btn';
-            link.href = `/api/auth/discord/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
-            link.textContent = 'Discord';
-            link.title = 'Se connecter avec Discord (pour que le staff sache qui envoie)';
+            link.href = '/login';
+            link.innerHTML = '<span class="dot" aria-hidden="true"></span>Compte';
+            link.title = 'Session DropQR — aucun compte n’est requis';
             slot.appendChild(link);
           }
         });
@@ -149,7 +165,7 @@ const initSite = () => {
   }
 
   const parallaxItems = [...document.querySelectorAll('[data-parallax]')];
-  const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .doc-section .card')];
+  const revealItems = [...document.querySelectorAll('.stat-card, .feature-card, .info-strip, .doc-section .card, .capacity-item, .upload-stats span')];
 
   if (!reducedMotion) {
     root.classList.add('motion-ready');
@@ -350,6 +366,22 @@ window.addEventListener('pjax:load', initSite);
   };
 
 
+  // Garde-fou: quitter la page pendant un envoi casse le résultat. On demande
+  // confirmation (le fichier, lui, reste sur l'appareil tant qu'il n'est pas
+  // arrivé au bout).
+  const guardBusyNavigation = async (url) => {
+    const uploading = document.documentElement.classList.contains('is-uploading');
+    if (!uploading) return true;
+    const ui = window.DropQRUI;
+    if (!ui || !ui.confirm) return window.confirm('Un envoi est en cours. Quitter quand même ?');
+    return ui.confirm({
+      title: 'Un envoi est en cours',
+      body: 'Quitter maintenant interrompra le transfert. Le fichier reste sur ton appareil : rien n’est perdu.',
+      confirmLabel: 'Quitter quand même',
+      danger: true
+    });
+  };
+
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a');
     if (!a || !a.href || a.target || a.hasAttribute('download') || a.hasAttribute('data-no-pjax')) return;
@@ -370,14 +402,17 @@ window.addEventListener('pjax:load', initSite);
 
     e.preventDefault();
     if (url.pathname !== window.location.pathname || url.search !== window.location.search) {
-      history.pushState({}, '', url.href);
-      navigate(url).then(() => {
-        if (url.hash) {
-          const target = document.getElementById(url.hash.substring(1));
-          if (target) target.scrollIntoView();
-        } else {
-          window.scrollTo(0, 0);
-        }
+      Promise.resolve(guardBusyNavigation(url)).then((ok) => {
+        if (!ok) return; // on reste sur la page, aucune entrée d'historique créée.
+        history.pushState({}, '', url.href);
+        navigate(url).then(() => {
+          if (url.hash) {
+            const target = document.getElementById(url.hash.substring(1));
+            if (target) target.scrollIntoView();
+          } else {
+            window.scrollTo(0, 0);
+          }
+        });
       });
     } else {
       window.scrollTo(0, 0);
@@ -394,5 +429,13 @@ window.addEventListener('pjax:load', initSite);
         window.scrollTo(0, 0);
       }
     });
+  });
+
+  // Fermer l'onglet pendant un envoi => rappel (native, pas de surcouche).
+  window.addEventListener('beforeunload', (event) => {
+    if (document.documentElement.classList.contains('is-uploading')) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
   });
 })();

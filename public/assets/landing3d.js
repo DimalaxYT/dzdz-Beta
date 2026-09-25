@@ -65,10 +65,10 @@ import * as THREE from '/assets/vendor/three.module.min.js';
   const key = new THREE.DirectionalLight(0xffffff, 1.35);
   key.position.set(4, 5, 6);
   scene.add(key);
-  const accentV = new THREE.PointLight(0x8b7cff, 14, 18, 2); // decay 2
+  const accentV = new THREE.PointLight(0xdcff5e, 14, 18, 2); // decay 2
   accentV.position.set(-4.5, 1.6, -2.5);
   scene.add(accentV);
-  const accentB = new THREE.PointLight(0x5b8cff, 10, 18, 2);
+  const accentB = new THREE.PointLight(0x83e1cf, 10, 18, 2);
   accentB.position.set(4.5, -1.4, 1.5);
   scene.add(accentB);
 
@@ -141,8 +141,8 @@ import * as THREE from '/assets/vendor/three.module.min.js';
 
   /* Étiquette d'un objet fichier (canvas 512x640). */
   const FILE_KINDS = {
-    photo: { tag: 'JPG', name: 'IMG_4821.JPG', meta: '24.2 MB · 6000×4000', hue: '#5b8cff' },
-    video: { tag: 'MP4', name: 'SUMMER_2026.MP4', meta: '1.8 GB · 4K · 03:12', hue: '#8b7cff' },
+    photo: { tag: 'JPG', name: 'IMG_4821.JPG', meta: '24.2 MB · 6000×4000', hue: '#83e1cf' },
+    video: { tag: 'MP4', name: 'SUMMER_2026.MP4', meta: '1.8 GB · 4K · 03:12', hue: '#dcff5e' },
     doc: { tag: 'PDF', name: 'PROJECT.PDF', meta: '2.4 MB · 14 pages', hue: '#9aa3b2' },
     zip: { tag: 'ZIP', name: 'FILES.ZIP', meta: '312 MB · 48 items', hue: '#c9b48c' },
     fig: { tag: 'FIG', name: 'LANDING_V3.FIG', meta: '18 MB · design', hue: '#7ce0c3' },
@@ -179,7 +179,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
     x.textAlign = 'left';
     // nom + méta en bas
     const label = (name || k.name);
-    x.fillStyle = '#ece9e2';
+    x.fillStyle = '#eceade';
     x.font = '650 30px Inter, system-ui, sans-serif';
     x.fillText(label.length > 19 ? label.slice(0, 18) + '…' : label, 48, h - 104);
     x.fillStyle = 'rgba(168,164,155,0.85)';
@@ -281,7 +281,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
         vec2 uv = gl_PointCoord - 0.5;
         float a = smoothstep(0.5, 0.06, length(uv));
         vec3 base = vec3(0.78, 0.79, 0.83);
-        vec3 tint = mix(vec3(0.545,0.486,1.0), vec3(0.357,0.549,1.0), fract(vTint * 7.0));
+        vec3 tint = mix(vec3(0.863,1.0,0.369), vec3(0.514,0.882,0.812), fract(vTint * 7.0));
         vec3 col = mix(base, tint, step(0.01, vTint));
         gl_FragColor = vec4(col, a * 0.5 * clamp(vFade, 0.0, 1.0));
       }`
@@ -313,7 +313,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
         uniform float uTime; uniform float uHue; varying vec2 vUv;
         void main(){
           float band = smoothstep(0.0, 0.22, fract(vUv.x * 2.0 - uTime * 0.05)) * (1.0 - smoothstep(0.35, 0.62, fract(vUv.x * 2.0 - uTime * 0.05)));
-          vec3 col = mix(vec3(0.545,0.486,1.0), vec3(0.357,0.549,1.0), uHue);
+          vec3 col = mix(vec3(0.863,1.0,0.369), vec3(0.514,0.882,0.812), uHue);
           gl_FragColor = vec4(col, (0.05 + band * 0.35) * 0.5);
         }`
     });
@@ -343,8 +343,8 @@ import * as THREE from '/assets/vendor/three.module.min.js';
           vec3 deep = vec3(0.045, 0.05, 0.062);
           // grain animé très léger
           float n = fract(sin(dot(vUv * (900.0 + mod(uTime, 10.0)), vec2(12.9898, 78.233))) * 43758.5453) * 0.012;
-          vec3 rimA = vec3(0.545, 0.486, 1.0);
-          vec3 rimB = vec3(0.357, 0.549, 1.0);
+          vec3 rimA = vec3(0.863, 1.0, 0.369);
+          vec3 rimB = vec3(0.514, 0.882, 0.812);
           vec3 rim = mix(rimA, rimB, vUv.y + sin(uTime * 0.2) * 0.15);
           float glow = fres * (0.36 + uIntensity * 0.85 + uDrag * 0.9);
           vec3 col = deep + n + rim * glow * 0.6;
@@ -358,7 +358,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
     const shape = roundedRectShape(5.2, 3.3, 0.42);
     const pts = shape.getPoints(128).map((p) => new THREE.Vector3(p.x, p.y, 0.004));
     const colors = [];
-    const cA = new THREE.Color(0x8b7cff), cB = new THREE.Color(0x5b8cff);
+    const cA = new THREE.Color(0xdcff5e), cB = new THREE.Color(0x83e1cf);
     pts.forEach((p, i) => { const c = cA.clone().lerp(cB, 0.5 + 0.5 * Math.sin(i / pts.length * Math.PI * 2)); colors.push(c.r, c.g, c.b); });
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -460,14 +460,14 @@ import * as THREE from '/assets/vendor/three.module.min.js';
         float head = smoothstep(uProg - 0.24, uProg, vUv.x) * (1.0 - smoothstep(uProg - 0.001, uProg + 0.001, vUv.x));
         float flow = smoothstep(0.0, 0.3, fract(vUv.x * 6.0 - uTime * 0.32)) * (1.0 - smoothstep(0.42, 0.7, fract(vUv.x * 6.0 - uTime * 0.32)));
         float tail = smoothstep(0.0, 0.5, uProg) * (1.0 - vUv.x);
-        vec3 col = mix(vec3(0.545,0.486,1.0), vec3(0.357,0.549,1.0), vUv.x);
+        vec3 col = mix(vec3(0.863,1.0,0.369), vec3(0.514,0.882,0.812), vUv.x);
         float a = 0.05 * tail + flow * 0.16 * tail + head * 0.85;
         gl_FragColor = vec4(col, a);
       }`
   });
   shareScene.add(new THREE.Mesh(new THREE.TubeGeometry(shareCurve, 160, 0.017, 6, false), shareTrailMat));
   const packet = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0xcfd3ff, transparent: true, opacity: 0.95 }));
+    new THREE.MeshBasicMaterial({ color: 0xeaffb8, transparent: true, opacity: 0.95 }));
   const packetGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
   packetGlow.scale.setScalar(0.85);
   packet.add(packetGlow);
@@ -490,12 +490,12 @@ import * as THREE from '/assets/vendor/three.module.min.js';
       uniform float uY; varying vec2 vUv;
       void main(){
         float line = 1.0 - smoothstep(0.0, 0.12, abs(vUv.y - uY));
-        gl_FragColor = vec4(vec3(0.62, 0.58, 1.0), line * 0.75 * step(-0.5, uY) + 0.0);
+        gl_FragColor = vec4(vec3(0.863, 1.0, 0.369), line * 0.75 * step(-0.5, uY) + 0.0);
       }`
   });
   const scanLine = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 3.3), scanLineMat);
   scanLine.position.z = 0.07;
-  const scanFrameMat = new THREE.MeshBasicMaterial({ color: 0x8b7cff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const scanFrameMat = new THREE.MeshBasicMaterial({ color: 0xdcff5e, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
   [[-1.85,1.85],[1.85,1.85],[-1.85,-1.85],[1.85,-1.85]].forEach(([cx, cy]) => {
     const corner = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.028), scanFrameMat);
     corner.position.set(cx + (cx > 0 ? -0.17 : 0.17), cy, 0.09);
@@ -540,7 +540,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
     demoTex.colorSpace = THREE.SRGBColorSpace;
     scanQrMat.map = demoTex;
     scanQrMat.needsUpdate = true;
-    paintQRToCanvas('https://dropqr.app/x7K92', demoQR, '#ece9e2', '#0d0f13', demoTex);
+    paintQRToCanvas('https://dropqr.app/x7K92', demoQR, '#eceade', '#0d0f13', demoTex);
   }
 
   /* ---- 4.8 nuage de particules pour la métamorphose fichier → QR */
@@ -582,7 +582,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
       void main(){
         vec2 uv = gl_PointCoord - 0.5;
         float a = smoothstep(0.5, 0.12, length(uv));
-        vec3 col = mix(vec3(0.93, 0.92, 0.9), vec3(0.62, 0.58, 1.0), step(0.9, vKeep) * 0.8);
+        vec3 col = mix(vec3(0.93, 0.92, 0.9), vec3(0.863, 1.0, 0.369), step(0.9, vKeep) * 0.8);
         gl_FragColor = vec4(col, a * uAlpha);
       }`
   });
@@ -633,7 +633,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
   heroFace.position.z = 0.045;
   const heroRing = new THREE.Mesh(
     new THREE.TorusGeometry(1.55, 0.012, 10, 160),
-    new THREE.MeshBasicMaterial({ color: 0x6f7dff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
+    new THREE.MeshBasicMaterial({ color: 0xb9e03f, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
   );
   heroFile.add(heroBody, heroFace, heroRing);
   heroFile.visible = false;
@@ -659,7 +659,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
     const cam = new THREE.PerspectiveCamera(38, 1, 0.1, 40);
     return { scene: s, cam };
   }
-  function miniFileSlab(sc = 1, hue = 0x8b7cff) {
+  function miniFileSlab(sc = 1, hue = 0xdcff5e) {
     const g = new THREE.Group();
     const body2 = new THREE.Mesh(new THREE.BoxGeometry(1.05 * sc, 1.34 * sc, 0.07), fileEdgeMat);
     const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.98 * sc, 0.16 * sc),
@@ -677,7 +677,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
       const N = 26, lane = 5.4;
       const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.62, 0.8, 0.05), fileEdgeMat, N);
       const seams = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.56, 0.09),
-        new THREE.MeshBasicMaterial({ color: 0x8b7cff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }), N);
+        new THREE.MeshBasicMaterial({ color: 0xdcff5e, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }), N);
       s.add(inst, seams);
       const dummy = new THREE.Object3D();
       const seeds = Array.from({ length: N }, (_, i) => ({ u: i / N, y: (Math.random() - 0.5) * 1.7, z: -Math.random() * 1.6, r: (Math.random() - 0.5) * 0.5, sp: 0.55 + Math.random() * 0.25 }));
@@ -716,11 +716,11 @@ import * as THREE from '/assets/vendor/three.module.min.js';
           uniform float uTime; varying vec2 vUv;
           void main(){
             float flow = smoothstep(0.0,0.25,fract(vUv.x*5.0 - uTime*0.9)) * (1.0 - smoothstep(0.36,0.66,fract(vUv.x*5.0 - uTime*0.9)));
-            gl_FragColor = vec4(mix(vec3(0.545,0.486,1.0), vec3(0.357,0.549,1.0), vUv.x), 0.06 + flow * 0.4);
+            gl_FragColor = vec4(mix(vec3(0.863,1.0,0.369), vec3(0.514,0.882,0.812), vUv.x), 0.06 + flow * 0.4);
           }`
       });
       s.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 120, 0.014, 6, false), tmat));
-      const flyer = miniFileSlab(0.5, 0x5b8cff);
+      const flyer = miniFileSlab(0.5, 0x83e1cf);
       s.add(flyer);
       const pt = new THREE.Vector3(); const tan = new THREE.Vector3();
       minis.push({ scene: s, cam, update(t) {
@@ -741,11 +741,11 @@ import * as THREE from '/assets/vendor/three.module.min.js';
       cam.position.set(0, 0.15, 3.5);
       const cage = new THREE.LineSegments(
         new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.28, 1)),
-        new THREE.LineBasicMaterial({ color: 0x8b7cff, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending })
+        new THREE.LineBasicMaterial({ color: 0xdcff5e, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending })
       );
       const cage2 = new THREE.LineSegments(
         new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.46, 0)),
-        new THREE.LineBasicMaterial({ color: 0x5b8cff, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending })
+        new THREE.LineBasicMaterial({ color: 0x83e1cf, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending })
       );
       const inner = miniFileSlab(0.95, 0x9aa3b2);
       s.add(cage, cage2, inner);
@@ -962,6 +962,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
   }
 
   function completeUpload(payload) {
+    try { if (window.DropQRStore && payload && payload.id && payload.deleteKey) window.DropQRStore.remember(payload); } catch (_e) {}
     if (upOverlay) upOverlay.classList.remove('on');
     state.morphing = true;
     // la métamorphose : le fichier devient un QR de particules
@@ -1136,6 +1137,31 @@ import * as THREE from '/assets/vendor/three.module.min.js';
         slot.appendChild(a);
       }
     });
+  })();
+
+  /* live counters + capability labels (same-origin API) */
+  (async function initLive() {
+    const statsEl = document.getElementById('live-transfers');
+    const bytesEl = document.getElementById('live-bytes');
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/stats', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (statsEl) statsEl.textContent = String(data.activeTransfers ?? '—');
+        if (bytesEl) bytesEl.textContent = data.activeBytesHuman || '0 o';
+      } catch (_e) {}
+    };
+    refresh();
+    setInterval(() => { if (!document.hidden) refresh(); }, 45000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+    try {
+      const res = await fetch('/api/config', { cache: 'no-store' });
+      if (res.ok) {
+        const cfg = await res.json();
+        document.querySelectorAll('[data-max-file-size]').forEach((el) => { el.textContent = cfg.maxFileSizeHuman || el.textContent; });
+      }
+    } catch (_e) {}
   })();
 
   /* nav scrolled */
@@ -1498,6 +1524,7 @@ import * as THREE from '/assets/vendor/three.module.min.js';
           setP(1);
           if (upOv) upOv.classList.remove('on');
           const p = xhr.response;
+          try { if (window.DropQRStore && p.id && p.deleteKey) window.DropQRStore.remember(p); } catch (_e) {}
           if (rl) rl.textContent = p.shareUrl.replace(/^https?:\/\//, '');
           if (rn) rn.textContent = `code ${p.code}`;
           if (rq) { rq.innerHTML = ''; const cv = document.createElement('canvas'); cv.width = 440; cv.height = 440; paint2(p.shareUrl, cv, '#0b0d10', '#ffffff'); rq.appendChild(cv); }

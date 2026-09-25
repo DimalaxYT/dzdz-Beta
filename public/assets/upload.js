@@ -1,5 +1,12 @@
 'use strict';
 
+/* DropQR — page Envoyer (v18)
+   Pipeline inchangée (session chunks + envois parallèles + repli classique).
+   Ajoute la scène : états visuels (idle → drag → selected → uploading →
+   assembling → ready), segments de durée, compte à rebours d'expiration,
+   métamorphose en particules du QR, partage natif, suppression via dialogue.
+   Les identifiants HTML historiques sont conservés (versions mobile incluse). */
+
 const initUploadPage = () => {
   const form = document.getElementById('uploadForm');
   if (!form) return;
@@ -8,11 +15,14 @@ const initUploadPage = () => {
   if (form.dataset.dropqrInit === '1') return;
   form.dataset.dropqrInit = '1';
 
+  const UI = window.DropQRUI || null;
+
   let chunkSize = 8 * 1024 * 1024;
   let uploadConcurrency = 5;
   let maxFileSizeBytes = null;
   let maxFileSizeHuman = '';
 
+  const stage = document.getElementById('sendStage');
   const fileInput = document.getElementById('fileInput');
   const dropzone = document.getElementById('dropzone');
   const dropTitle = document.getElementById('dropTitle');
@@ -48,6 +58,14 @@ const initUploadPage = () => {
   const progressSpeed = document.getElementById('progressSpeed');
   const sandboxWarning = document.getElementById('sandboxWarning');
   const configNotice = document.getElementById('configNotice');
+  // Éléments de la nouvelle scène (optionnels: les anciennes pages restent compatibles).
+  const ttlSeg = document.getElementById('ttlSeg');
+  const dropVeil = document.getElementById('drop-veil');
+  const resultCountdown = document.getElementById('resultCountdown');
+  const downloadQrBtn = document.getElementById('downloadQr');
+  const shareBtn = document.getElementById('shareBtn');
+  const copyCodeBtn = document.getElementById('copyCode');
+  const stepsHost = document.getElementById('progressSteps');
 
   let backendReachable = true;
   let chunkedUploadAvailable = true;
@@ -58,17 +76,7 @@ const initUploadPage = () => {
   let currentDeleteKey = null;
 
   function formatBytes(bytes) {
-    const value = Number(bytes || 0);
-    if (value < 1024) return `${value} o`;
-    const units = ['Ko', 'Mo', 'Go', 'To'];
-    let size = value / 1024;
-    let unit = units[0];
-    for (let i = 0; i < units.length; i += 1) {
-      unit = units[i];
-      if (size < 1024 || i === units.length - 1) break;
-      size /= 1024;
-    }
-    return `${size.toFixed(size >= 10 ? 1 : 2)} ${unit}`;
+    return UI ? UI.formatBytes(bytes) : `${Math.round(Number(bytes || 0) / 1e6)} MB`;
   }
 
   const sleep = (ms) => new Promise((resolve) => { window.setTimeout(resolve, ms); });
@@ -78,24 +86,41 @@ const initUploadPage = () => {
     status.textContent = message;
   }
 
+  function setPhase(phase) {
+    if (stage) stage.dataset.phase = phase;
+    document.documentElement.classList.toggle('is-uploading', phase === 'uploading' || phase === 'processing');
+  }
+
+  function setStep(name) {
+    if (!stepsHost) return;
+    const order = ['prepare', 'stream', 'assemble', 'qr'];
+    const idx = order.indexOf(name);
+    stepsHost.querySelectorAll('[data-step]').forEach((el) => {
+      const i = order.indexOf(el.dataset.step);
+      el.classList.toggle('done', i < idx);
+      el.classList.toggle('on', i === idx);
+    });
+  }
+
   function setProgress(percent, loaded = 0, total = 0, detail = '') {
     const safePercent = Math.max(0, Math.min(100, Math.round(percent || 0)));
     progressPanel.classList.add('visible');
     progressBar.style.width = `${safePercent}%`;
     progressPercent.textContent = `${safePercent}%`;
-    progressTrack.setAttribute('aria-valuenow', String(safePercent));
+    if (progressTrack) progressTrack.setAttribute('aria-valuenow', String(safePercent));
     progressLoaded.textContent = total ? `${formatBytes(loaded)} / ${formatBytes(total)}` : `${formatBytes(loaded)} envoyés`;
-    progressSpeed.textContent = detail || 'Upload en cours…';
+    progressSpeed.textContent = detail || 'Envoi en cours…';
   }
 
   function resetProgress() {
-    progressLabel.textContent = 'Upload en cours';
+    progressLabel.textContent = 'Envoi en cours';
     progressBar.style.width = '0%';
     progressPercent.textContent = '0%';
-    progressTrack.setAttribute('aria-valuenow', '0');
+    if (progressTrack) progressTrack.setAttribute('aria-valuenow', '0');
     progressLoaded.textContent = '0 o / 0 o';
     progressSpeed.textContent = 'Préparation…';
     progressPanel.classList.remove('visible');
+    setStep('');
   }
 
   function makeUploadId() {
@@ -109,23 +134,30 @@ const initUploadPage = () => {
     sendButton.disabled = !file || uploadInProgress || tooLarge;
 
     if (!file) {
-      // Version téléphone: pas de glisser-déposer, on parle de « toucher ».
       const isMobileView = document.documentElement.getAttribute('data-view') === 'mobile';
       dropTitle.textContent = isMobileView ? 'Choisir un fichier' : 'Dépose ton fichier ici';
-      dropSubtitle.textContent = isMobileView ? 'Touche pour parcourir tes fichiers' : 'ou clique pour le choisir. Un seul fichier par transfert.';
+      dropSubtitle.innerHTML = isMobileView ? 'Touche pour parcourir tes fichiers' : 'ou clique pour le choisir — un seul fichier par transfert · <kbd>Entrée</kbd> pour parcourir';
+      dropzone.classList.remove('is-ready');
       fileChip.classList.remove('visible');
+      if (!uploadInProgress) setPhase('idle');
       return;
     }
 
     const chunks = Math.max(1, Math.ceil(file.size / chunkSize));
     dropTitle.textContent = file.name;
-    dropSubtitle.textContent = `${formatBytes(file.size)} · envoi rapide en ${chunks} morceau${chunks > 1 ? 'x' : ''}`;
+    dropSubtitle.textContent = `${formatBytes(file.size)} · ${uploadConcurrency} flux parallèles · ${chunks} morceau${chunks > 1 ? 'x' : ''}`;
     fileChipName.textContent = file.name;
-    fileChipSize.textContent = `${formatBytes(file.size)} · ${uploadConcurrency} envois parallèles · morceaux de ${formatBytes(chunkSize)}`;
+    fileChipSize.textContent = `${formatBytes(file.size)} · morceaux de ${formatBytes(chunkSize)} × ${uploadConcurrency}`;
     fileChip.classList.add('visible');
+    if (!uploadInProgress) {
+      dropzone.classList.add('is-ready');
+      setPhase('selected');
+    }
     if (tooLarge) {
       dropSubtitle.textContent = `Fichier trop volumineux. Limite actuelle : ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`;
-      setStatus(`Ce fichier dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`, 'error');
+      setStatus(`Ce fichier dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}. Choisis un fichier plus petit.`, 'error');
+      dropzone.classList.add('shake');
+      setTimeout(() => dropzone.classList.remove('shake'), 500);
     }
   }
 
@@ -143,7 +175,6 @@ const initUploadPage = () => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const config = await response.json();
       backendReachable = true;
-      // L'envoi par morceaux exige maintenant la session init côté serveur.
       chunkedUploadAvailable = config.chunkedUpload === true && config.chunkInit === true;
       if (Number(config.maxFileSizeBytes) > 0) {
         maxFileSizeBytes = Number(config.maxFileSizeBytes);
@@ -157,7 +188,7 @@ const initUploadPage = () => {
 
       const notices = [];
       if (!chunkedUploadAvailable) {
-        notices.push('<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.11.0</code> et <code>chunkInit: true</code>.');
+        notices.push('<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>chunkInit: true</code>.');
       }
       if (config.sandboxWarning) {
         notices.push('<strong>Preview Arena détectée.</strong> Pour un vrai test mobile, utilise ton URL Railway ou Render.');
@@ -177,6 +208,25 @@ const initUploadPage = () => {
     }
   }
 
+  /* ---------- Segments de durée ===== */
+  function bindTtlChips() {
+    if (!ttlSeg) return;
+    const sync = () => {
+      ttlSeg.querySelectorAll('button[data-ttl]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.ttl === String(ttlMinutes.value)));
+      });
+    };
+    ttlSeg.addEventListener('click', (event) => {
+      const btn = event.target.closest('button[data-ttl]');
+      if (!btn || uploadInProgress) return;
+      ttlMinutes.value = btn.dataset.ttl;
+      ttlMinutes.dispatchEvent(new Event('change', { bubbles: true }));
+      sync();
+    });
+    sync();
+  }
+
+  /* ---------- Pipeline (inchangé) ---------- */
   function uploadErrorMessage(xhr, payload) {
     if (payload && payload.error) return payload.error;
     if (xhr.status === 0) return 'Le navigateur n’arrive pas à joindre le backend. Vérifie l’URL de déploiement et HTTPS.';
@@ -216,8 +266,8 @@ const initUploadPage = () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fileName: file.name,
+        fileSize: file.size,
         mimeType: file.type || 'application/octet-stream',
-        totalSize: file.size,
         chunkSize,
         ttlMinutes: Number(ttlMinutes.value),
         deleteAfterDownload: deleteAfterDownload.checked
@@ -225,7 +275,7 @@ const initUploadPage = () => {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new Error(payload.error || `Initialisation de l’upload impossible HTTP ${response.status}.`);
+      const error = new Error(payload.error || `Session d’upload refusée (HTTP ${response.status}).`);
       error.status = response.status;
       error.isInitError = true;
       throw error;
@@ -239,8 +289,6 @@ const initUploadPage = () => {
       const end = Math.min(file.size, start + session.chunkSize);
       const blob = file.slice(start, end);
       const body = new FormData();
-      // Les champs texte sont placés AVANT le fichier pour que Multer les lise
-      // systématiquement, même en cas d'erreur de taille.
       body.append('uploadId', session.uploadId);
       body.append('uploadSecret', session.uploadSecret);
       body.append('chunkIndex', String(chunkIndex));
@@ -300,12 +348,12 @@ const initUploadPage = () => {
         return await sendChunk(args);
       } catch (error) {
         if (attempt === maxAttempts || !isRetryable(error) || args.token !== currentUploadToken) throw error;
-        // Le morceau repart de zéro: on remet son compteur de progression à zéro.
         args.progress[args.chunkIndex] = 0;
         const delay = retryDelayMs(error, attempt);
         progressSpeed.textContent = error.status === 429
           ? `Limite serveur atteinte · nouvelle tentative dans ${Math.ceil(delay / 1000)} s`
           : `Connexion instable · nouvelle tentative ${attempt}/${maxAttempts - 1} dans ${Math.ceil(delay / 1000)} s`;
+        setStatus('Envoi interrompu par le réseau. Je réessaie automatiquement…');
         await sleep(delay);
       }
     }
@@ -313,7 +361,9 @@ const initUploadPage = () => {
   }
 
   async function completeUpload(session, file) {
-    progressLabel.textContent = 'Finalisation';
+    setPhase('processing');
+    setStep('assemble');
+    progressLabel.textContent = 'Assemblage serveur';
     setProgress(100, file.size, file.size, 'Assemblage du fichier sur le serveur…');
     const response = await fetch('/api/transfers/complete', {
       method: 'POST',
@@ -386,6 +436,7 @@ const initUploadPage = () => {
   }
 
   async function uploadFileInChunks(file) {
+    setStep('prepare');
     const session = await initChunkSession(file);
     const totalChunks = session.totalChunks;
     const startedAt = performance.now();
@@ -395,8 +446,10 @@ const initUploadPage = () => {
     let nextIndex = 0;
     let completed = 0;
 
-    progressLabel.textContent = 'Upload rapide';
-    setProgress(0, 0, file.size, `${totalChunks} morceaux · ${uploadConcurrency} envois parallèles`);
+    setPhase('uploading');
+    setStep('stream');
+    progressLabel.textContent = 'Envoi parallèle';
+    setProgress(0, 0, file.size, `${totalChunks} morceau${totalChunks > 1 ? 'x' : ''} · ${uploadConcurrency} flux`);
 
     async function worker() {
       while (nextIndex < totalChunks) {
@@ -405,31 +458,105 @@ const initUploadPage = () => {
         nextIndex += 1;
         await sendChunkWithRetry({ file, session, chunkIndex, progress, startedAt, token });
         completed += 1;
-        progressLabel.textContent = `Upload rapide · ${completed}/${totalChunks}`;
+        progressLabel.textContent = `Envoi parallèle · ${completed}/${totalChunks}`;
       }
     }
 
     const workers = Array.from({ length: Math.min(uploadConcurrency, totalChunks) }, () => worker());
     await Promise.all(workers);
-    setProgress(100, file.size, file.size, 'Tous les morceaux sont envoyés.');
+    setProgress(100, file.size, file.size, 'Tous les morceaux sont arrivés.');
     return completeUpload(session, file);
   }
 
+  /* ---------- Métamorphose du QR en particules ---------- */
+  function materializeQr(host) {
+    if (!host || !qrImage) return;
+    const settled = () => host.classList.add('is-settled');
+    const fx = host.querySelector('canvas.fx');
+    if (!fx || !qrImage.src || (UI && UI.reduced())) { settled(); return; }
+    const img = qrImage;
+    const render = () => {
+      const box = img.getBoundingClientRect();
+      if (!box.width || !box.height) return settled();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      fx.width = Math.round(box.width * dpr);
+      fx.height = Math.round(box.height * dpr);
+      // Échantillonnage du QR réel → particules qui convergent sur les modules sombres.
+      const grid = 74;
+      const sample = document.createElement('canvas');
+      sample.width = grid; sample.height = grid;
+      const sx = sample.getContext('2d', { willReadFrequently: true });
+      sx.drawImage(img, 0, 0, grid, grid);
+      let cells;
+      try { cells = sx.getImageData(0, 0, grid, grid).data; } catch (_error) { return settled(); }
+      const targets = [];
+      for (let y = 0; y < grid; y += 1) {
+        for (let x = 0; x < grid; x += 1) {
+          const i = (y * grid + x) * 4;
+          const lum = (cells[i] * 299 + cells[i + 1] * 587 + cells[i + 2] * 114) / 1000;
+          if (lum < 128) targets.push([x, y]);
+        }
+      }
+      if (!targets.length) return settled();
+      const ctx = fx.getContext('2d');
+      const cellW = fx.width / grid;
+      const particles = targets.map(([x, y]) => ({
+        x: Math.random() * fx.width,
+        y: -10 - Math.random() * fx.height * 0.4,
+        tx: (x + 0.5) * cellW,
+        ty: (y + 0.5) * cellW,
+        delay: Math.random() * 0.45,
+        hue: Math.random() < 0.16 ? '131,225,207' : '220,255,94'
+      }));
+      const dur = 1250;
+      const t0 = performance.now();
+      const frame = (t) => {
+        const e = Math.min(1, (t - t0) / dur);
+        ctx.clearRect(0, 0, fx.width, fx.height);
+        const fadeOut = e > 0.82 ? Math.max(0, 1 - (e - 0.82) / 0.18) : 1;
+        for (const p of particles) {
+          const local = Math.min(1, Math.max(0, (e - p.delay) / (1 - 0.45)));
+          const ease = 1 - Math.pow(1 - local, 3);
+          const cx = p.x + (p.tx - p.x) * ease;
+          const cy = p.y + (p.ty - p.y) * ease;
+          const s = cellW * (0.95 + (1 - ease) * 1.6);
+          ctx.fillStyle = `rgba(${p.hue},${(0.22 + 0.78 * ease) * fadeOut})`;
+          ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
+        }
+        if (e < 1) requestAnimationFrame(frame);
+        else { ctx.clearRect(0, 0, fx.width, fx.height); settled(); }
+      };
+      requestAnimationFrame(frame);
+    };
+    if (img.decode) img.decode().then(render).catch(() => settled());
+    else if (img.complete) render();
+    else img.addEventListener('load', render, { once: true });
+  }
+
+  /* ---------- Résultat ---------- */
   function showResult(payload, file) {
-    setProgress(100, file.size, file.size, 'QR code généré');
-    progressLabel.textContent = 'Upload terminé';
-    const expiry = new Date(payload.expiresAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+    setPhase('ready');
+    setStep('qr');
+    setProgress(100, file.size, file.size, 'QR code généré — le passage est ouvert.');
+    progressLabel.textContent = 'Transfert prêt';
+    const expiry = UI ? UI.formatDate(payload.expiresAt) : payload.expiresAt;
     qrImage.src = payload.qrDataUrl;
     resultName.textContent = payload.fileName;
     resultCode.textContent = payload.code || payload.id;
     resultDiscord.textContent = payload.discord && payload.discord.sent ? 'Envoyé' : (payload.discordConfigured ? 'Non envoyé' : 'Non configuré');
     resultSize.textContent = payload.sizeHuman || formatBytes(payload.size);
     resultExpiry.textContent = expiry;
-    resultCleanup.textContent = payload.deleteAfterDownload ? 'Après le premier téléchargement' : 'À expiration';
+    resultCleanup.textContent = payload.deleteAfterDownload ? 'Après le 1er téléchargement' : 'À expiration';
     shareLink.textContent = payload.shareUrl;
     shareLink.title = payload.shareUrl;
     copyButton.dataset.url = payload.shareUrl;
     openLink.href = payload.shareUrl;
+    if (resultCountdown) {
+      resultCountdown.dataset.expiry = payload.expiresAt || '';
+      resultCountdown.classList.remove('expired', 'warn');
+      delete resultCountdown.dataset.dqFired;
+    }
+    if (copyCodeBtn) copyCodeBtn.dataset.code = payload.code || payload.id;
 
     currentPayload = payload;
     currentDeleteKey = payload.deleteKey || null;
@@ -443,11 +570,14 @@ const initUploadPage = () => {
 
     emptyState.style.display = 'none';
     result.classList.add('visible');
-    setStatus('C’est prêt. Le code et le QR peuvent être partagés. Le transfert est aussi dans ton tableau de bord.', 'success');
+    materializeQr(result.querySelector('.qr-stage'));
+    if (UI) UI.toast('Passage ouvert — le fichier est prêt à être partagé.');
+    setStatus('C’est prêt. Partage le QR, le code ou le lien. Le transfert est aussi dans ton tableau de bord.', 'success');
   }
 
+  /* ---------- Événements ---------- */
   fileInput.addEventListener('change', updateFileLabel);
-  clearFile.addEventListener('click', clearSelectedFile);
+  if (clearFile) clearFile.addEventListener('click', clearSelectedFile);
 
   ['dragenter', 'dragover'].forEach((eventName) => {
     dropzone.addEventListener(eventName, (event) => {
@@ -455,7 +585,6 @@ const initUploadPage = () => {
       if (!uploadInProgress) dropzone.classList.add('dragover');
     });
   });
-
   ['dragleave', 'drop'].forEach((eventName) => {
     dropzone.addEventListener(eventName, (event) => {
       event.preventDefault();
@@ -463,14 +592,52 @@ const initUploadPage = () => {
     });
   });
 
-  dropzone.addEventListener('drop', (event) => {
-    const file = event.dataTransfer.files[0];
+  const acceptDroppedFile = (file) => {
     if (!file || uploadInProgress) return;
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
     fileInput.files = dataTransfer.files;
     updateFileLabel();
-  });
+    sendButton.focus();
+  };
+
+  dropzone.addEventListener('drop', (event) => acceptDroppedFile(event.dataTransfer.files[0]));
+
+  // Glisser n’importe où sur la page déclenche le port d’entrée.
+  const hasFiles = (event) => event.dataTransfer && [...(event.dataTransfer.types || [])].includes('Files');
+  let dragDepth = 0;
+  const onWindowDragEnter = (event) => {
+    if (!hasFiles(event) || uploadInProgress) return;
+    event.preventDefault();
+    dragDepth += 1;
+    if (dropVeil) dropVeil.classList.add('on');
+    dropzone.classList.add('dragover');
+  };
+  const onWindowDragOver = (event) => { if (hasFiles(event)) event.preventDefault(); };
+  const onWindowDragLeave = (event) => {
+    if (!hasFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) {
+      if (dropVeil) dropVeil.classList.remove('on');
+      dropzone.classList.remove('dragover');
+    }
+  };
+  const onWindowDrop = (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    if (dropVeil) dropVeil.classList.remove('on');
+    dropzone.classList.remove('dragover');
+    const files = event.dataTransfer && event.dataTransfer.files;
+    if (files && files.length) {
+      if (files.length > 1 && UI) UI.toast('Un seul fichier par transfert — le premier est utilisé.');
+      acceptDroppedFile(files[0]);
+    }
+  };
+  window.addEventListener('dragenter', onWindowDragEnter);
+  window.addEventListener('dragover', onWindowDragOver);
+  window.addEventListener('dragleave', onWindowDragLeave);
+  window.addEventListener('drop', onWindowDrop);
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -478,20 +645,27 @@ const initUploadPage = () => {
     if (!file || uploadInProgress) return;
     if (maxFileSizeBytes && file.size > maxFileSizeBytes) {
       setStatus(`Ce fichier dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`, 'error');
+      dropzone.classList.add('shake');
+      setTimeout(() => dropzone.classList.remove('shake'), 500);
       return;
     }
 
     result.classList.remove('visible');
+    const qrStage = result.querySelector('.qr-stage');
+    if (qrStage) qrStage.classList.remove('is-settled');
     currentPayload = null;
     currentDeleteKey = null;
     sandboxWarning.classList.add('hidden');
     emptyState.style.display = 'grid';
-    setStatus('Upload en cours… garde cette page ouverte.');
+    setStatus('Envoi en cours… garde cette page ouverte.');
     uploadInProgress = true;
     sendButton.disabled = true;
-    clearFile.disabled = true;
+    sendButton.classList.add('is-loading');
+    if (clearFile) clearFile.disabled = true;
+    setPhase('uploading');
+    setStep('prepare');
     progressLabel.textContent = 'Préparation';
-    setProgress(0, 0, file.size, `Préparation des morceaux de ${formatBytes(chunkSize)}…`);
+    setProgress(0, 0, file.size, `Découpage en morceaux de ${formatBytes(chunkSize)}…`);
 
     try {
       let payload;
@@ -504,59 +678,125 @@ const initUploadPage = () => {
           // uniquement pour les petits fichiers.
           if (error.isInitError && error.status === 404 && file.size <= 40 * 1024 * 1024) {
             chunkedUploadAvailable = false;
-            progressLabel.textContent = 'Upload classique';
+            progressLabel.textContent = 'Envoi classique';
             payload = await uploadClassicWithRetry(file);
           } else {
             throw error;
           }
         }
       } else if (file.size <= 40 * 1024 * 1024) {
-        progressLabel.textContent = 'Upload classique';
+        progressLabel.textContent = 'Envoi classique';
+        setStep('stream');
         payload = await uploadClassicWithRetry(file);
       } else {
         throw new Error('Backend déployé pas à jour. Redéploie la dernière version.');
       }
       showResult(payload, file);
     } catch (error) {
-      setStatus(error.message || 'Upload impossible.', 'error');
-      progressLabel.textContent = 'Upload interrompu';
-      progressSpeed.textContent = backendReachable ? 'Le fichier n’a pas été enregistré.' : 'Backend API non détecté.';
+      setStatus(`${error.message || 'Upload impossible.'} Ton fichier reste sur ton appareil : rien n’est perdu, tu peux réessayer.`, 'error');
+      progressLabel.textContent = 'Envoi interrompu';
+      progressSpeed.textContent = backendReachable ? 'Le fichier n’a pas été enregistré sur le serveur.' : 'Backend API non détecté.';
+      setPhase('error');
+      if (UI) UI.toast(error.message || 'Upload impossible.', { type: 'error' });
     } finally {
       activeRequests.forEach((xhr) => { try { xhr.abort(); } catch (_error) {} });
       activeRequests = new Set();
       uploadInProgress = false;
       currentUploadToken = null;
-      clearFile.disabled = false;
+      if (clearFile) clearFile.disabled = false;
+      sendButton.classList.remove('is-loading');
       sendButton.disabled = !fileInput.files[0];
     }
   });
 
-  copyButton.addEventListener('click', async () => {
-    const url = copyButton.dataset.url;
-    if (!url) return;
+  if (copyButton) {
+    copyButton.addEventListener('click', async () => {
+      const url = copyButton.dataset.url;
+      if (!url) return;
+      const done = UI ? await UI.copy(url, 'Lien copié — envoie-le à la personne qui doit recevoir.') : await writeFallback(url);
+      if (done) flash(copyButton, 'Copié');
+    });
+  }
+  async function writeFallback(url) {
     try {
       await navigator.clipboard.writeText(url);
-      copyButton.textContent = 'Copié';
-      setTimeout(() => { copyButton.textContent = 'Copier'; }, 1400);
+      return true;
     } catch (_error) {
       window.prompt('Copie le lien:', url);
+      return false;
     }
-  });
+  }
+  function flash(button, label) {
+    const original = button.textContent;
+    button.textContent = label;
+    setTimeout(() => { button.textContent = original; }, 1500);
+  }
 
-  newTransfer.addEventListener('click', () => {
-    if (uploadInProgress) return;
-    result.classList.remove('visible');
-    currentPayload = null;
-    currentDeleteKey = null;
-    emptyState.style.display = 'grid';
-    clearSelectedFile();
-    fileInput.focus();
-  });
+  if (copyCodeBtn) {
+    copyCodeBtn.addEventListener('click', async () => {
+      const code = copyCodeBtn.dataset.code || resultCode.textContent;
+      if (code && code !== '—' && await (UI ? UI.copy(code, `Code ${code} copié.`) : writeFallback(code))) flash(copyCodeBtn, 'Copié');
+    });
+  }
+
+  if (downloadQrBtn) {
+    downloadQrBtn.addEventListener('click', () => {
+      if (!currentPayload || !currentPayload.qrDataUrl) return;
+      const a = document.createElement('a');
+      a.href = currentPayload.qrDataUrl;
+      a.download = `dropqr-${currentPayload.code || 'qr'}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (UI) UI.toast('QR téléchargé.');
+    });
+  }
+
+  if (shareBtn) {
+    const canShare = typeof navigator.share === 'function';
+    shareBtn.classList.toggle('hidden', !canShare);
+    shareBtn.addEventListener('click', async () => {
+      const url = copyButton && copyButton.dataset.url;
+      if (!url || !canShare) return;
+      try {
+        await navigator.share({
+          title: currentPayload ? currentPayload.fileName : 'DropQR',
+          text: 'Fichier temporaire via DropQR — ouvre le lien ou saisis le code sur dropqr.',
+          url
+        });
+      } catch (error) {
+        if (error && error.name === 'AbortError') return;
+        await (UI ? UI.copy(url, 'Partage indisponible — lien copié à la place.') : writeFallback(url));
+      }
+    });
+  }
+
+  if (newTransfer) {
+    newTransfer.addEventListener('click', () => {
+      if (uploadInProgress) return;
+      result.classList.remove('visible');
+      const qrStage = result.querySelector('.qr-stage');
+      if (qrStage) qrStage.classList.remove('is-settled');
+      currentPayload = null;
+      currentDeleteKey = null;
+      emptyState.style.display = 'grid';
+      clearSelectedFile();
+      fileInput.focus();
+    });
+  }
 
   if (deleteTransferBtn) {
     deleteTransferBtn.addEventListener('click', async () => {
       if (!currentPayload || !currentDeleteKey || deleteTransferBtn.disabled) return;
-      const confirmed = window.confirm(`Supprimer définitivement « ${currentPayload.fileName} » du serveur ?`);
+      const confirmed = UI
+        ? await UI.confirm({
+          title: 'Couper le passage ?',
+          body: `« ${currentPayload.fileName} » sera supprimé définitivement du serveur. Les personnes qui ne l’ont pas encore téléchargé perdront l’accès.`,
+          note: 'Cette action est immédiate et irréversible.',
+          confirmLabel: 'Supprimer maintenant',
+          danger: true
+        })
+        : window.confirm(`Supprimer définitivement « ${currentPayload.fileName} » du serveur ?`);
       if (!confirmed) return;
 
       deleteTransferBtn.disabled = true;
@@ -574,7 +814,8 @@ const initUploadPage = () => {
         currentPayload = null;
         currentDeleteKey = null;
         emptyState.style.display = 'grid';
-        setStatus('Transfert supprimé du serveur.', 'success');
+        setStatus('Transfert supprimé du serveur. Le lien et le QR ne fonctionnent plus.', 'success');
+        if (UI) UI.toast('Fichier supprimé du serveur.');
       } catch (error) {
         setStatus(error.message, 'error');
       } finally {
@@ -583,8 +824,15 @@ const initUploadPage = () => {
     });
   }
 
+  if (resultCountdown) {
+    resultCountdown.addEventListener('dq:expired', () => {
+      setStatus('Le délai d’expiration est atteint : le serveur a purgé ce transfert. Tu peux en créer un nouveau.', 'error');
+    });
+  }
+
   updateFileLabel();
   resetProgress();
+  bindTtlChips();
   loadConfig();
 };
 initUploadPage();

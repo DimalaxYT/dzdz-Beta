@@ -4,45 +4,51 @@
   <meta charset="utf-8">
   <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090b">
+  <meta name="theme-color" content="#07080a">
   <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
   <title>Transferts — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
-  <link rel="stylesheet" href="/assets/mobile.css?v=1">
+  <link rel="stylesheet" href="/assets/dropqr.css?v=4">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
+  <link rel="stylesheet" href="/assets/mobile.css?v=4">
 </head>
-<body class="m-body">
+<body class="m-body dq-app">
   <header class="nv m-top" id="nv">
     <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
     <div class="nv-right"><div class="nav-auth" data-discord-auth></div></div>
   </header>
 
   <div class="shell m-shell">
-    <main class="m-main m-dashboard">
-      <div class="m-page-head m-page-head-row">
-        <div>
-          <h1>Transferts</h1>
-          <p class="lead">Envoyés depuis ce téléphone.</p>
-        </div>
-        <span class="step-pill" id="transferCount">0 transfert</span>
+    <main class="m-main m-dash">
+      <div class="m-page-head">
+        <p class="m-eyebrow">04 / REGISTRE</p>
+        <h1>Tes passages.</h1>
+        <p class="lead">Les envois créés depuis ce téléphone, avec leur clé de suppression. Referme un passage quand tu veux.</p>
       </div>
 
-      <div class="m-toolbar">
-        <button id="refreshTransfers" class="secondary-btn" type="button">Actualiser</button>
-        <button id="clearTransferList" class="secondary-btn" type="button">Effacer la liste</button>
-      </div>
-      <div id="dashboardStatus" class="status" role="status"></div>
-
-      <section id="dashboardRoot" class="m-dash-root" aria-label="Liste des transferts">
-        <div id="dashboardEmpty" class="m-card m-empty-card hidden">
-          <p>Aucun transfert ici pour l’instant. Ceux que tu envoies depuis ce navigateur apparaîtront automatiquement, avec leur clé de suppression.</p>
-          <a class="primary-btn" href="/upload">Envoyer un fichier</a>
+      <section class="panel" id="dashboardRoot">
+        <div class="panel-head" style="padding:16px">
+          <div>
+            <h2 class="panel-title" style="font-size:17px">Transferts de ce navigateur</h2>
+            <p class="panel-caption">Clés stockées localement uniquement.</p>
+          </div>
+          <span class="step-pill" id="transferCount">—</span>
         </div>
-        <div id="transferList" class="transfer-list"></div>
+        <div class="panel-body" style="padding:14px">
+          <div class="m-dash-actions">
+            <button id="refreshTransfers" class="mini-btn" type="button">Actualiser</button>
+            <button id="clearTransferList" class="mini-btn danger" type="button">Effacer la liste</button>
+          </div>
+          <div id="dashboardEmpty" class="result-empty hidden" style="padding:8px 2px">
+            <div class="warning" style="margin-bottom:12px">Aucun transfert enregistré ici. Envoie un fichier : il apparaîtra dans cette liste avec sa clé de suppression.</div>
+            <div class="actions"><a class="primary-btn" href="/upload" style="width:100%">Ouvrir un passage →</a></div>
+          </div>
+          <div id="transferList" class="transfer-list"></div>
+          <div id="dashboardStatus" class="status" role="status"></div>
+        </div>
       </section>
-
-      <p class="m-footnote">La liste et les clés restent stockées sur cet appareil, elles ne quittent jamais ton navigateur.</p>
     </main>
 
     <footer class="site-footer m-footer">
@@ -63,9 +69,10 @@
       <a href="/dashboard" class="active" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg><span>Transferts</span></a>
     </nav>
   </div>
-  <script src="/assets/site.js?v=16" defer></script>
-  <script src="/assets/store.js?v=1" defer></script>
-  <script src="/assets/dashboard.js?v=1" defer></script>
-  <script src="/assets/mobile.js?v=1" defer></script>
+  <script src="/assets/site.js?v=17" defer></script>
+  <script src="/assets/ui.js?v=1" defer></script>
+  <script src="/assets/store.js?v=2" defer></script>
+  <script src="/assets/dashboard.js?v=2" defer></script>
+  <script src="/assets/mobile.js?v=2" defer></script>
 </body>
 </html>

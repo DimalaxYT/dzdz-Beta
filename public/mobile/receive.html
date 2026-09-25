@@ -4,15 +4,17 @@
   <meta charset="utf-8">
   <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090b">
+  <meta name="theme-color" content="#07080a">
   <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
   <title>Recevoir — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
-  <link rel="stylesheet" href="/assets/mobile.css?v=1">
+  <link rel="stylesheet" href="/assets/dropqr.css?v=4">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
+  <link rel="stylesheet" href="/assets/mobile.css?v=4">
 </head>
-<body class="m-body">
+<body class="m-body dq-app">
   <header class="nv m-top" id="nv">
     <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
     <div class="nv-right"><div class="nav-auth" data-discord-auth></div></div>
@@ -21,32 +23,47 @@
   <div class="shell m-shell">
     <main class="m-main m-receive">
       <div class="m-page-head">
-        <h1>Recevoir</h1>
-        <p class="lead">Tape le code reçu. Tu as un QR ? Vise-le simplement avec l’appareil photo de ton téléphone.</p>
+        <p class="m-eyebrow">03 / RECEVOIR</p>
+        <h1>Tape le code.</h1>
+        <p class="lead">Tu as un QR ? Vise-le avec l’appareil photo du téléphone — rien à installer.</p>
       </div>
 
-      <form id="receiveForm" class="m-card receive-form">
-        <label class="field"><span class="label-row">Code DropQR <span class="hint">ex. Q7R4M2K</span></span>
-          <input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="CODE" maxlength="32" required>
-        </label>
+      <form id="receiveForm" class="m-card receive-form" novalidate>
+        <div class="field">
+          <span class="label-row" id="codeLabelM">Code DropQR <span class="hint">ex. Q7R4M2K</span></span>
+          <div class="cells-field" id="cellsField">
+            <div class="cells" id="codeCells" aria-hidden="true"></div>
+            <input id="transferCode" class="code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="CODE" maxlength="32" required aria-labelledby="codeLabelM">
+          </div>
+        </div>
         <div class="m-inline-actions">
           <button id="pasteCode" class="secondary-btn hidden" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="4" width="10" height="4" rx="1"/><path d="M7 6H5v15h14V6h-2"/></svg>
             Coller
           </button>
-          <button class="primary-btn" type="submit">Rechercher</button>
+          <button class="primary-btn" type="submit">Balayer</button>
         </div>
         <div id="receiveStatus" class="status"></div>
+        <div id="receiveError" class="receive-error" role="alert">
+          <h3 id="receiveErrorTitle">—</h3>
+          <p id="receiveErrorBody">—</p>
+          <div class="actions" style="margin-top:10px"><button id="receiveRetry" class="mini-btn" type="button">Corriger le code</button></div>
+        </div>
       </form>
 
-      <section id="receiveResult" class="m-card m-result hidden" aria-live="polite">
+      <section id="receiveResult" class="m-card m-result receive-result hidden" aria-live="polite">
+        <span class="sweep" aria-hidden="true"></span>
         <div class="m-result-top">
-          <p class="m-done">Transfert trouvé</p>
+          <p class="m-done"><span class="m-done-dot" aria-hidden="true"></span>Transfert trouvé</p>
           <span class="step-pill" id="resultCodeBadge">Code</span>
         </div>
+        <p class="tag countdown m-countdown" id="receiveCountdown" style="margin:0 0 12px">—</p>
         <video id="receiveVideo" class="video-preview hidden" controls playsinline preload="metadata"></video>
         <div class="file-name" id="receiveFileName">—</div>
-        <a id="downloadButton" class="primary-btn m-download" href="#">Télécharger</a>
+        <a id="downloadButton" class="primary-btn m-download" href="#">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12"/><path d="m18 10-6 6-6-6"/><path d="M4 20h16"/></svg>
+          Télécharger
+        </a>
         <div class="meta-grid">
           <div class="meta-box"><span>Taille</span><strong id="receiveSize">—</strong></div>
           <div class="meta-box"><span>Expiration</span><strong id="receiveExpiry">—</strong></div>
@@ -61,7 +78,7 @@
 
       <div class="m-tip">
         <strong>Astuce</strong>
-        <p>Sur iPhone et Android, l’appareil photo reconnaît les QR DropQR tout seul : une notification ouvre directement le fichier.</p>
+        <p>Sur iPhone et Android, l’appareil photo reconnaît les QR DropQR tout seul : une notification ouvre directement le fichier. Un code mal lu ? Les codes n’utilisent jamais I, O, 0 ni 1.</p>
       </div>
     </main>
 
@@ -83,8 +100,9 @@
       <a href="/dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg><span>Transferts</span></a>
     </nav>
   </div>
-  <script src="/assets/site.js?v=16" defer></script>
-  <script src="/assets/receive.js?v=7" defer></script>
-  <script src="/assets/mobile.js?v=1" defer></script>
+  <script src="/assets/site.js?v=17" defer></script>
+  <script src="/assets/ui.js?v=1" defer></script>
+  <script src="/assets/receive.js?v=8" defer></script>
+  <script src="/assets/mobile.js?v=2" defer></script>
 </body>
 </html>

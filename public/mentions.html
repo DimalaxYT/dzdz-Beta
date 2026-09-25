@@ -4,33 +4,41 @@
   <meta charset="utf-8">
   <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090b">
+  <meta name="theme-color" content="#07080a">
   <meta name="color-scheme" content="dark">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
   <title>Mentions — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/dropqr.css?v=4">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
 </head>
-<body>
+<body class="dq-app">
   <header class="nv" id="nv">
     <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
-    <nav class="nv-links" id="nv-links" aria-label="Primary">
-      <a href="/#product">Product</a>
-      <a href="/#how">How it works</a>
-      <a href="/#faq">FAQ</a>
-      <a class="nv-app" href="/help"><span class="ico" aria-hidden="true">?</span>Help</a>
-      <a class="nv-app" href="/receive"><span class="ico" aria-hidden="true">↓</span>Receive</a>
+    <nav class="nv-links" id="nv-links" aria-label="Navigation de l’application">
+      <a class="nv-app" href="/upload"><span class="ico" aria-hidden="true">↑</span>Envoyer</a>
+      <a class="nv-app" href="/receive"><span class="ico" aria-hidden="true">↓</span>Recevoir</a>
+      <a class="nv-app" href="/dashboard"><span class="ico" aria-hidden="true">≣</span>Transferts</a>
+      <a href="/help"><span class="ico" aria-hidden="true">?</span>Aide</a>
     </nav>
     <div class="nv-right">
       <div class="nav-auth" data-discord-auth></div>
-      <a class="nv-cta" href="/upload">Start sharing <span class="arrow" aria-hidden="true">→</span></a>
+      <a class="nv-cta" href="/upload">Ouvrir un passage <span class="arrow" aria-hidden="true">→</span></a>
       <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nv-links"><span></span></button>
     </div>
   </header>
 
   <div class="shell">
-
     <header class="hero compact page-heading">
-      <div class="hero-main"><div class="page-code">LEGAL / PRIVACY</div><h1>Mentions et confidentialité.</h1><p class="lead">Les informations essentielles sur l'éditeur, le fonctionnement de DropQR et les données nécessaires au transfert.</p></div>
-      <div class="capacity-board" data-parallax data-speed="-.07" aria-label="Résumé légal"><div class="capacity-item"><strong>0</strong><span>compte requis</span></div><div class="capacity-item"><strong>TTL</strong><span>durée limitée</span></div><div class="capacity-item"><strong>NO ADS</strong><span>pas de publicité</span></div></div>
+      <div class="hero-main">
+        <div class="page-code">LEGAL / PRIVACY</div>
+        <h1>Mentions et confidentialité.</h1>
+        <p class="lead">L’essentiel sur l’éditeur, le fonctionnement de DropQR et les données strictement nécessaires au transfert.</p>
+      </div>
+      <div class="capacity-board" data-parallax data-speed="-.07" aria-label="Résumé légal">
+        <div class="capacity-item"><strong>0</strong><span>compte requis</span></div>
+        <div class="capacity-item"><strong>TTL</strong><span>durée limitée</span></div>
+        <div class="capacity-item"><strong>NO ADS</strong><span>pas de publicité</span></div>
+      </div>
     </header>
 
     <main class="docs-grid legal-content">
@@ -38,31 +46,33 @@
       <div class="doc-section">
         <section id="editeur" class="card"><h2>Éditeur du site</h2><p><strong>Nom ou pseudonyme :</strong> ano1by.</p><p><strong>Contact :</strong> Discord — ano1by.</p><p>Le contact principal du site est disponible via Discord. Pour les demandes liées à un transfert, indique si possible le code concerné sans partager de clé privée.</p></section>
 
-        <section id="service" class="card"><h2>Fonctionnement du service</h2><p>DropQR permet de transférer temporairement un fichier entre deux appareils. Aucun compte n'est nécessaire. Un code court et un lien sont générés pour accéder au fichier.</p><p>Les fichiers sont supprimés automatiquement à l'expiration du délai choisi ou après le premier téléchargement lorsque cette option est activée. Un redémarrage ou un redéploiement de l'hébergeur peut également interrompre un transfert.</p><p>Lorsque la rotation Discord est activée, le bot crée une invitation classique pour le salon de contact et le lien affiché dans le footer est actualisé automatiquement. Le contact humain reste <strong>ano1by</strong> sur Discord.</p></section>
+        <section id="service" class="card"><h2>Fonctionnement du service</h2><p>DropQR permet de transférer temporairement un fichier entre deux appareils. Aucun compte n’est nécessaire pour envoyer ou recevoir ; la connexion Discord optionnelle sert uniquement à signaler l’expéditeur au staff de l’instance. Un code court, un lien et un QR sont générés pour accéder au fichier.</p><p>Les fichiers sont supprimés automatiquement à l’expiration du délai choisi ou après le premier téléchargement lorsque cette option est activée. Un redémarrage ou un redéploiement de l’hébergeur peut également interrompre un transfert.</p><p>Lorsque la rotation Discord est activée, le bot crée une invitation pour le salon de contact et le lien affiché dans le pied de page est actualisé automatiquement. Le contact humain reste <strong>ano1by</strong> sur Discord.</p></section>
 
-        <section id="donnees" class="card"><h2>Données traitées</h2><p>Pour assurer le transfert, DropQR traite temporairement le nom du fichier, son type, sa taille, sa date de création, sa date d'expiration et le nombre de téléchargements.</p><p>Le serveur conserve uniquement le hash de la clé de suppression. La clé elle-même est remise à la personne qui crée le transfert.</p><p>Si Discord est configuré, le code, le lien, le QR code, le nom, la taille et l'expiration sont envoyés au webhook Discord choisi par l'éditeur. Le message Discord est programmé pour être supprimé avec le transfert.</p></section>
+        <section id="donnees" class="card"><h2>Données traitées</h2><p>Pour assurer le transfert, DropQR traite temporairement le nom du fichier, son type, sa taille, sa date de création, sa date d’expiration et le nombre de téléchargements.</p><p>Le serveur ne conserve que le <strong>hash</strong> de la clé de suppression ; la clé elle-même n’existe que dans le navigateur de la personne qui crée le transfert (page <a href="/dashboard">Transferts</a>).</p><p>Si Discord est configuré, le code, le lien, le nom, la taille et l’expiration du transfert sont envoyés au webhook choisi par l’éditeur. Le message Discord est supprimé en même temps que le transfert. En cas de connexion Discord d’un visiteur, son pseudo, ID et avatar sont conservés pour signer les envois ; la session (cookie <code>HttpOnly</code>) expire après 30 jours.</p></section>
 
-        <section id="confidentialite" class="card"><h2>Confidentialité</h2><p>DropQR ne vend pas les fichiers et n'utilise pas les transferts pour faire de la publicité. Les fichiers sont stockés temporairement sur l'hébergement configuré par l'éditeur.</p><p>Cette version ne crée pas de compte et ne conserve plus d'historique local des transferts dans le navigateur. Les anciennes entrées locales sont supprimées automatiquement lors de l'ouverture du site.</p><p>Le serveur ne pose pas volontairement de cookie de suivi. L'hébergeur, le reverse proxy ou la plateforme de preview peuvent toutefois produire leurs propres journaux techniques, notamment pour la sécurité et les statistiques d'infrastructure.</p></section>
+        <section id="confidentialite" class="card"><h2>Confidentialité</h2><p>DropQR ne vend pas les fichiers et n’exploite pas les transferts à des fins publicitaires. Les fichiers sont stockés temporairement sur l’hébergement configuré par l’éditeur.</p><p>Aucun cookie de suivi n’est déposé volontairement. Le cookie de préférence « version mobile / PC » ne contient que ce choix d’affichage. L’hébergeur, le reverse proxy ou la plateforme de preview peuvent produire leurs propres journaux techniques (sécurité, statistiques d’infrastructure).</p></section>
 
-        <section id="droits" class="card"><h2>Demandes et contact</h2><p>Pour toute question concernant un fichier, une suppression ou une demande relative aux données, contacte l'éditeur à l'adresse indiquée dans la section Éditeur.</p><p>Un fichier temporaire peut normalement être supprimé avec le bouton ou la clé de suppression fournie au moment de sa création. Ne partage jamais une clé privée ou un lien de transfert avec une personne non autorisée.</p><p class="legal-note"><strong>Important :</strong> cette page est un modèle informatif. Les coordonnées de l'éditeur, l'hébergeur exact et les obligations légales applicables doivent être vérifiés et complétés avant une utilisation publique professionnelle.</p></section>
+        <section id="droits" class="card"><h2>Demandes et contact</h2><p>Pour toute question concernant un fichier, une suppression ou les données, contacte l’éditeur via les coordonnées de la section Éditeur.</p><p>Un fichier temporaire peut être supprimé immédiatement avec le bouton « Couper le passage » ou la clé de suppression fournie à la création. Ne partage jamais une clé privée avec une personne non autorisée.</p><p class="legal-note"><strong>Important :</strong> cette page est un modèle informatif. Les coordonnées de l’éditeur, l’hébergeur exact et les obligations légales applicables doivent être vérifiés et complétés avant une utilisation publique professionnelle.</p></section>
       </div>
     </main>
 
     <footer class="site-footer">
       <span class="foot-brand">DropQR</span>
       <nav aria-label="App">
-        <a href="/upload">Upload</a>
-        <a href="/receive">Receive</a>
-        <a href="/dashboard">Transfers</a>
-        <a href="/help">Help</a>
-        <a href="/mentions" class="active" aria-current="page">Legal</a>
+        <a href="/upload">Envoyer</a>
+        <a href="/receive">Recevoir</a>
+        <a href="/dashboard">Transferts</a>
+        <a href="/account">Compte</a>
+        <a href="/help">Aide</a>
+        <a href="/mentions" class="active" aria-current="page">Mentions</a>
         <a class="discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
         <a class="view-switch-link" data-view-switch href="?view=mobile">Version mobile</a>
         <a class="view-switch-link" data-view-auto href="?view=auto" hidden>Auto</a>
       </nav>
-      <span class="colophon">Free unlimited file sharing — drop, share, done.</span>
+      <span class="colophon">drop · share · done.</span>
     </footer>
   </div>
-  <script src="/assets/site.js?v=16" defer></script>
+  <script src="/assets/site.js?v=17" defer></script>
+  <script src="/assets/ui.js?v=1" defer></script>
 </body>
 </html>

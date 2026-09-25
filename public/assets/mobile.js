@@ -167,6 +167,24 @@
     }
   }
 
+  // Compteurs live de l'accueil mobile (mêmes données que la landing desktop).
+  function initLiveBand() {
+    const t = document.querySelector('[data-live-transfers]');
+    const b = document.querySelector('[data-live-bytes]');
+    if (!t || !b) return;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/stats', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        t.textContent = String(data.activeTransfers ?? '—');
+        b.textContent = data.activeBytesHuman || '0 o';
+      } catch (_error) {}
+    };
+    load();
+    window.setInterval(() => { if (!document.hidden) load(); }, 45000);
+  }
+
   // Clavier virtuel: la visualViewport rétrécit nettement quand il s'ouvre.
   let keyboardWatch = false;
   function initKeyboardWatch() {
@@ -197,6 +215,7 @@
   const init = () => {
     initUpload();
     initReceive();
+    initLiveBand();
     initKeyboardWatch();
     syncTabs();
   };

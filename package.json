@@ -1,12 +1,12 @@
 {
   "name": "qr-file-transfer-site",
-  "version": "1.12.0",
-  "description": "Site simple pour transférer des fichiers entre appareils avec QR code et suppression automatique.",
+  "version": "1.13.0",
+  "description": "Site simple pour transf\u00e9rer des fichiers entre appareils avec QR code et suppression automatique.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check public/assets/site.js && node --check public/assets/store.js && node --check public/assets/upload.js && node --check public/assets/receive.js && node --check public/assets/dashboard.js && node --check public/assets/device.js && node --check public/assets/mobile.js"
+    "check": "node --check server.js && node --check public/assets/site.js && node --check public/assets/store.js && node --check public/assets/upload.js && node --check public/assets/receive.js && node --check public/assets/dashboard.js && node --check public/assets/device.js && node --check public/assets/mobile.js && node --check public/assets/ui.js && node --check public/assets/login.js && node --check public/assets/account.js && node --check public/assets/share.js"
   },
   "dependencies": {
     "express": "^4.18.3",

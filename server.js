@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 });
 
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 
 // Le port vient toujours de l'environnement (Render, Railway, etc. l'injectent).
 // En local, on retombe sur 3000 comme annoncé dans le README.
@@ -372,7 +372,7 @@ function getDiscordSessionUser(req) {
   }
   const record = discordUserStore()[session.userId];
   if (!record || !record.user) return null;
-  return { sid, userId: session.userId, user: record.user };
+  return { sid, userId: session.userId, user: record.user, expiresAt: Number(session.expiresAt) };
 }
 
 function discordRedirectUri(req) {
@@ -1184,8 +1184,11 @@ app.get('/', (req, res) => sendPage(req, res, 'home.html'));
 app.get('/upload', (req, res) => sendPage(req, res, 'upload.html'));
 app.get('/dashboard', (req, res) => sendPage(req, res, 'dashboard.html'));
 app.get('/receive', (req, res) => sendPage(req, res, 'receive.html'));
+app.get('/login', (req, res) => sendPage(req, res, 'login.html'));
+app.get('/account', (req, res) => sendPage(req, res, 'account.html'));
 app.get('/help', (req, res) => sendPage(req, res, 'help.html'));
 app.get('/mentions', (req, res) => sendPage(req, res, 'mentions.html'));
+app.get('/favicon.ico', (_req, res) => res.redirect(302, '/assets/logo.svg'));
 app.get('/api/device', (req, res) => {
   res.setHeader('Vary', 'User-Agent, Sec-CH-UA-Mobile, Cookie');
   res.json(detectDeviceView(req));
@@ -1610,7 +1613,8 @@ app.get('/api/auth/me', (req, res) => {
   const session = DISCORD_AUTH_ENABLED ? getDiscordSessionUser(req) : null;
   return res.json({
     configured: DISCORD_AUTH_ENABLED,
-    user: session ? session.user : null
+    user: session ? session.user : null,
+    sessionExpiresAt: session && Number.isFinite(session.expiresAt) ? new Date(session.expiresAt).toISOString() : null
   });
 });
 
@@ -1941,20 +1945,20 @@ function publicTransferPayload(req, meta) {
   };
 }
 
-// En-tête et pied de page partagés avec les pages statiques (design landing).
+// En-tête et pied de page partagés avec les pages rendues côté serveur
+// (mêmes classes que dropqr.css / pages.css chargés par ces pages).
 function renderSiteHeader() {
-  return `  <header class="nv" id="nv">
+  return `  <header class="nv scrolled" id="nv">
     <a class="nv-brand" href="/"><span class="mark" aria-hidden="true"></span><span>DropQR</span></a>
-    <nav class="nv-links" id="nv-links" aria-label="Primary">
-      <a href="/#product">Product</a>
-      <a href="/#how">How it works</a>
-      <a href="/#faq">FAQ</a>
-      <a class="nv-app" href="/help"><span class="ico" aria-hidden="true">?</span>Help</a>
-      <a class="nv-app" href="/receive"><span class="ico" aria-hidden="true">↓</span>Receive</a>
+    <nav class="nv-links" id="nv-links" aria-label="Navigation">
+      <a class="nv-app" href="/upload"><span class="ico" aria-hidden="true">&uarr;</span>Envoyer</a>
+      <a class="nv-app" href="/receive"><span class="ico" aria-hidden="true">&darr;</span>Recevoir</a>
+      <a class="nv-app" href="/dashboard"><span class="ico" aria-hidden="true">&equiv;</span>Transferts</a>
+      <a href="/help"><span class="ico" aria-hidden="true">?</span>Aide</a>
     </nav>
     <div class="nv-right">
       <div class="nav-auth" data-discord-auth></div>
-      <a class="nv-cta" href="/upload">Start sharing <span class="arrow" aria-hidden="true">→</span></a>
+      <a class="nv-cta" href="/upload">Nouveau passage <span class="arrow" aria-hidden="true">&rarr;</span></a>
       <button class="nv-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nv-links"><span></span></button>
     </div>
   </header>`;
@@ -1964,17 +1968,23 @@ function renderSiteFooter() {
   return `    <footer class="site-footer">
       <span class="foot-brand">DropQR</span>
       <nav aria-label="App">
-        <a href="/upload">Upload</a>
-        <a href="/receive">Receive</a>
-        <a href="/dashboard">Transfers</a>
-        <a href="/help">Help</a>
-        <a href="/mentions">Legal</a>
+        <a href="/upload">Envoyer</a>
+        <a href="/receive">Recevoir</a>
+        <a href="/dashboard">Transferts</a>
+        <a href="/account">Compte</a>
+        <a href="/help">Aide</a>
+        <a href="/mentions">Mentions</a>
         <a class="discord-contact-link" data-discord-contact href="#" hidden>Discord</a>
         <a class="view-switch-link" data-view-switch href="?view=mobile">Version mobile</a>
         <a class="view-switch-link" data-view-auto href="?view=auto" hidden>Auto</a>
       </nav>
-      <span class="colophon">Free unlimited file sharing — drop, share, done.</span>
+      <span class="colophon">drop &middot; share &middot; done.</span>
     </footer>`;
+}
+
+function fileExtOf(name) {
+  const match = String(name || '').match(/\.([a-z0-9]{1,6})$/i);
+  return (match ? match[1] : 'FILE').toUpperCase();
 }
 
 function renderSharePage(req, meta) {
@@ -1986,36 +1996,46 @@ function renderSharePage(req, meta) {
   <meta charset="utf-8">
   <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090b">
+  <meta name="theme-color" content="#07080a">
   <meta name="color-scheme" content="dark">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
   <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/dropqr.css?v=4">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
 </head>
-<body>
+<body class="dq-app">
 ${renderSiteHeader()}
   <div class="shell share-shell">
-    <main class="share-page card">
-      <div class="page-code">PUBLIC / DOWNLOAD</div>
-      <h1>Le fichier est prêt.</h1>
-      <p class="lead">Ce passage est temporaire. Récupère le fichier avant son expiration.</p>
+    <main class="share-page card dq-grain">
+      <span class="sweep" aria-hidden="true"><i></i></span>
+      <div class="page-code">REÇU / PASSAGE TEMPORAIRE</div>
+      <h1>Un fichier t’attend.</h1>
+      <p class="lead">Ce passage est temporaire : récupère le fichier avant son expiration, il disparaîtra sans laisser de trace.</p>
       <section class="share-file">
-        <div class="name">${escapeHtml(meta.originalName)}</div>
+        <div class="name"><span class="ftype">${escapeHtml(fileExtOf(meta.originalName))}</span><span id="share-name">${escapeHtml(meta.originalName)}</span></div>
         <div class="share-meta">
-          <span>Code : ${escapeHtml(meta.code || meta.id)}</span>
-          <span>Taille : ${escapeHtml(formatBytes(meta.size))}</span>
-          <span>Expire : ${escapeHtml(expiresAt)}</span>
-          <span>${meta.deleteAfterDownload ? 'Suppression après le premier téléchargement.' : 'Suppression automatique à expiration.'}</span>
+          <span>Code&nbsp;: <b>${escapeHtml(meta.code || meta.id)}</b></span>
+          <span>Taille&nbsp;: <b>${escapeHtml(formatBytes(meta.size))}</b></span>
+          <span>Expire le&nbsp;: <b>${escapeHtml(expiresAt)}</b></span>
+          <span>Nettoyage&nbsp;: <b>${meta.deleteAfterDownload ? 'après le 1er téléchargement' : 'à expiration'}</b></span>
         </div>
       </section>
       ${payload.canPreview ? `<video class="video-preview" controls playsinline preload="metadata" src="${escapeHtml(payload.previewUrl)}"></video>` : ''}
-      <a class="btn primary share-download" href="${escapeHtml(payload.downloadUrl)}">Télécharger le fichier</a>
-      
-      <p class="share-note">Ne partage ce lien qu’avec les personnes autorisées. Une fois expiré ou téléchargé, le fichier disparaît du serveur.</p>
-      <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
+      <div class="share-count countdown" data-expiry="${escapeHtml(new Date(meta.expiresAt).toISOString())}" data-count-label="Fermeture dans">—</div>
+      <a class="primary-btn share-download mag" href="${escapeHtml(payload.downloadUrl)}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="m18 10-6 6-6-6"/><path d="M4 20h16"/></svg>
+        Télécharger le fichier
+      </a>
+      <div class="actions">
+        <button id="share-copy" class="secondary-btn" type="button" data-url="${escapeHtml(payload.shareUrl)}">Copier le lien</button>
+        <button id="share-native" class="secondary-btn hidden" type="button" data-url="${escapeHtml(payload.shareUrl)}">Partager</button>
+      </div>
+      <p class="share-note">${meta.deleteAfterDownload ? 'Ce lien ne fonctionne qu’une fois&nbsp;: après le premier téléchargement, le fichier est supprimé du serveur.' : 'Le fichier sera purgé automatiquement à l’expiration, même sans téléchargement.'}</p>
+      <p class="share-legal"><a href="/">dropqr</a> &middot; <a href="/receive">recevoir un autre fichier</a> &middot; <a href="/mentions">mentions et confidentialité</a></p>
     </main>
-${renderSiteFooter()}
   </div>
-  <script src="/assets/site.js?v=16" defer></script>
+  <script src="/assets/ui.js?v=1" defer></script>
+  <script src="/assets/share.js?v=1" defer></script>
 </body>
 </html>`;
 }
@@ -2027,24 +2047,25 @@ function renderMessagePage(title, message) {
   <meta charset="utf-8">
   <script src="/assets/device.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090b">
+  <meta name="theme-color" content="#07080a">
   <meta name="color-scheme" content="dark">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
   <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/dropqr.css?v=4">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
 </head>
-<body>
+<body class="dq-app">
 ${renderSiteHeader()}
   <div class="shell share-shell">
     <main class="share-page card">
       <div class="page-code">SYSTEM / NOTICE</div>
       <h1>${escapeHtml(title)}</h1>
       <p class="lead">${escapeHtml(message)}</p>
-      <div class="actions"><a class="btn primary" href="/upload">Créer un transfert</a><a class="btn" href="/">Retour à l’accueil</a></div>
+      <div class="actions"><a class="primary-btn" href="/upload">Ouvrir un passage →</a><a class="secondary-btn" href="/receive">Recevoir avec un code</a><a class="secondary-btn" href="/">Accueil</a></div>
       <p class="share-legal"><a href="/mentions">Mentions et confidentialité</a></p>
     </main>
-${renderSiteFooter()}
   </div>
-  <script src="/assets/site.js?v=16" defer></script>
+  <script src="/assets/ui.js?v=1" defer></script>
 </body>
 </html>`;
 }
