@@ -12,6 +12,15 @@ DropQR est un site multi-pages pour transférer temporairement des fichiers entr
 - `/mentions` : mentions légales, confidentialité et données traitées
 - `/t/:id` : page publique de téléchargement
 
+## Types de fichiers et multi-fichiers
+
+**Tous les formats sont acceptés** : archives `.zip`, fichiers Roblox `.rblx`, modèles 3D `.obj`, images, vidéos, audio, documents… aucun filtre d’extension côté client ni côté serveur.
+
+- un fichier est envoyé tel quel, avec son nom et son extension d’origine ;
+- **plusieurs fichiers** (ou un dossier glissé-déposé sur PC) sont regroupés automatiquement dans une archive **`.zip`** créée dans le navigateur (`public/assets/zip.js` : STORE, CRC32, ZIP64, noms UTF-8, chemins de dossiers conservés), puis envoyés comme un seul transfert ;
+- le badge d’extension (ZIP, RBLX, OBJ…) est affiché à côté du fichier choisi ;
+- le serveur déduit le type MIME à partir de l’extension quand le navigateur n’en fournit pas (`.zip` → `application/zip`, `.obj` → `model/obj`, etc.).
+
 ## Version PC / version téléphone (détection automatique)
 
 Les pages `/`, `/upload`, `/receive` et `/dashboard` existent en deux versions, servies sur **la même URL** :
@@ -38,6 +47,7 @@ Backend Node.js/Express avec :
 - upload par morceaux en trois temps : session créée par `POST /api/transfers/chunk/init` (le serveur valide taille totale, taille des morceaux et nombre de morceaux, puis retourne un secret), envoi des morceaux sur `/api/transfers/chunk`, assemblage sur `/api/transfers/complete` ;
 - chaque morceau doit avoir exactement la taille attendue par la session : impossible de contourner la limite de taille déclarée ;
 - génération de QR code ;
+- type MIME déduit de l’extension du nom de fichier quand le client n’en envoie pas (`.zip`, `.obj`, `.rblx`, etc.) ;
 - métadonnées dans `storage/db.json` ;
 - suppression après premier téléchargement si activée ;
 - suppression automatique à expiration ;

@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 });
 
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 
 // Le port vient toujours de l'environnement (Render, Railway, etc. l'injectent).
 // En local, on retombe sur 3000 comme annoncé dans le README.
@@ -214,6 +214,61 @@ function normalizeMimeType(value) {
     : 'application/octet-stream';
 }
 
+// Types MIME par extension quand le navigateur n'en fournit pas (ou envoie un
+// générique). Tout reste transférable (.zip, .rblx, .obj, images, vidéos…),
+// ces correspondances ne servent qu'à mieux décrire le fichier stocké.
+const EXTENSION_MIME_TYPES = {
+  zip: 'application/zip',
+  '7z': 'application/x-7z-compressed',
+  rar: 'application/vnd.rar',
+  tar: 'application/x-tar',
+  gz: 'application/gzip',
+  bz2: 'application/x-bzip2',
+  obj: 'model/obj',
+  mtl: 'model/mtl',
+  stl: 'model/stl',
+  glb: 'model/gltf-binary',
+  gltf: 'model/gltf+json',
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  csv: 'text/csv',
+  json: 'application/json',
+  xml: 'application/xml',
+  html: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  md: 'text/markdown',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  flac: 'audio/flac',
+  m4a: 'audio/mp4',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  woff2: 'font/woff2'
+};
+
+function inferMimeType(fileName, clientMime) {
+  const client = normalizeMimeType(clientMime);
+  if (client !== 'application/octet-stream') return client;
+  const ext = path.extname(String(fileName || '')).slice(1).toLowerCase();
+  return EXTENSION_MIME_TYPES[ext] || client;
+}
+
 function storedFilePath(storedName) {
   const name = String(storedName || '');
   if (!/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9._-]+)?$/.test(name)) return null;
@@ -243,6 +298,11 @@ function isVideoMime(mimeType) {
 function contentDispositionInline(filename) {
   const safeName = cleanOriginalName(filename).replace(/["\\]/g, '_');
   return `inline; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`;
+}
+
+function contentDispositionAttachment(filename) {
+  const safeName = cleanOriginalName(filename).replace(/["\\]/g, '_');
+  return `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`;
 }
 
 function normalizeBaseUrl(value) {
@@ -1275,7 +1335,7 @@ async function createTransfer(req, res, next) {
     const payload = await registerStoredFile(req, {
       originalName: req.file.originalname,
       storedName: req.file.filename,
-      mimeType: req.file.mimetype,
+      mimeType: inferMimeType(req.file.originalname, req.file.mimetype),
       size: req.file.size,
       ttlMinutes,
       deleteAfterDownload
@@ -1394,7 +1454,7 @@ async function assembleChunkUpload(req, uploadId, uploadSecret) {
     }
 
     const originalName = cleanOriginalName(meta.originalName);
-    const mimeType = normalizeMimeType(meta.mimeType);
+    const mimeType = inferMimeType(originalName, meta.mimeType);
     const ttlMinutes = parseTtlMinutes(meta.ttlMinutes);
     const deleteAfterDownload = parseDeleteAfterDownload(meta.deleteAfterDownload);
     const ext = path.extname(originalName || '').slice(0, 24).replace(/[^a-zA-Z0-9.]/g, '');
@@ -1445,7 +1505,7 @@ async function initChunkUpload(req, res, next) {
     const totalSize = Number(body.totalSize);
     const chunkSize = Number(body.chunkSize);
     const originalName = cleanOriginalName(body.fileName);
-    const mimeType = normalizeMimeType(body.mimeType);
+    const mimeType = inferMimeType(originalName, body.mimeType);
     const ttlMinutes = parseTtlMinutes(body.ttlMinutes);
     const deleteAfterDownload = parseDeleteAfterDownload(body.deleteAfterDownload);
 
@@ -1887,6 +1947,10 @@ app.get('/download/:id', async (req, res) => {
   await saveDb().catch((error) => console.error('Erreur compteur téléchargement:', error));
 
   res.setHeader('Cache-Control', 'no-store');
+  // Content-Type tiré des métadonnées (et non d'une table de extensions parfois
+  // exotique): .obj -> model/obj, .zip -> application/zip, .rblx -> octet-stream…
+  res.setHeader('Content-Type', normalizeMimeType(meta.mimeType));
+  res.setHeader('Content-Disposition', contentDispositionAttachment(meta.originalName));
   res.download(filePath, meta.originalName, async (error) => {
     if (meta.deleteAfterDownload) activeDownloads.delete(id);
     if (error) {
@@ -1989,7 +2053,7 @@ function renderSharePage(req, meta) {
   <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
   <title>Télécharger ${escapeHtml(meta.originalName)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
 </head>
 <body>
 ${renderSiteHeader()}
@@ -2030,7 +2094,7 @@ function renderMessagePage(title, message) {
   <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
   <title>${escapeHtml(title)} — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
 </head>
 <body>
 ${renderSiteHeader()}

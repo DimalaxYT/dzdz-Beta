@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Envoyer — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
   <link rel="stylesheet" href="/assets/mobile.css?v=1">
 </head>
 <body class="m-body">
@@ -22,16 +22,16 @@
     <main class="m-main m-upload">
       <div class="m-page-head">
         <h1>Envoyer</h1>
-        <p class="lead">Un fichier, un code, un QR. Jusqu’à <strong data-max-file-size>10 Go</strong>.</p>
+        <p class="lead">Un fichier, un code, un QR. Jusqu’à <strong data-max-file-size>10 Go</strong>. Tous les formats acceptés (.zip, .rblx, .obj…), et plusieurs fichiers regroupés en .zip.</p>
       </div>
 
       <form id="uploadForm" class="m-card m-upload-card">
         <div id="dropzone" class="dropzone m-dropzone">
-          <input id="fileInput" class="file-input" name="file" type="file" required aria-label="Choisir un fichier">
+          <input id="fileInput" class="file-input" name="file" type="file" multiple required aria-label="Choisir un ou plusieurs fichiers">
           <div class="drop-inner">
             <div class="upload-orb"><img src="/assets/upload-icon.svg?v=6" alt="" aria-hidden="true"></div>
-            <div class="drop-title" id="dropTitle">Choisir un fichier</div>
-            <p class="drop-subtitle" id="dropSubtitle">Touchez pour parcourir</p>
+            <div class="drop-title" id="dropTitle">Choisir des fichiers</div>
+            <p class="drop-subtitle" id="dropSubtitle">Touchez pour parcourir — tous les formats</p>
           </div>
         </div>
 
@@ -45,12 +45,15 @@
             <span>Galerie</span>
           </label>
           <input id="cameraInput" class="m-hidden-input" type="file" accept="image/*,video/*" capture="environment" tabindex="-1" aria-hidden="true">
-          <input id="galleryInput" class="m-hidden-input" type="file" accept="image/*,video/*" tabindex="-1" aria-hidden="true">
+          <input id="galleryInput" class="m-hidden-input" type="file" accept="image/*,video/*" multiple tabindex="-1" aria-hidden="true">
         </div>
 
         <div id="fileChip" class="file-chip" aria-live="polite">
           <div class="file-icon"><img src="/assets/file-icon.svg?v=6" alt="" aria-hidden="true"></div>
-          <div class="file-chip-info"><div id="fileChipName" class="file-chip-name"></div><div id="fileChipSize" class="file-chip-size"></div></div>
+          <div class="file-chip-info">
+            <div class="file-chip-name-row"><div id="fileChipName" class="file-chip-name"></div><span id="fileChipExt" class="ext-pill" hidden></span></div>
+            <div id="fileChipSize" class="file-chip-size"></div>
+          </div>
           <button id="clearFile" class="clear-btn" type="button">Retirer</button>
         </div>
 
@@ -127,7 +130,8 @@
   </div>
   <script src="/assets/site.js?v=16" defer></script>
   <script src="/assets/store.js?v=1" defer></script>
-  <script src="/assets/upload.js?v=17" defer></script>
-  <script src="/assets/mobile.js?v=1" defer></script>
+  <script src="/assets/zip.js?v=1" defer></script>
+  <script src="/assets/upload.js?v=18" defer></script>
+  <script src="/assets/mobile.js?v=2" defer></script>
 </body>
 </html>

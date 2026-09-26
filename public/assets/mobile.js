@@ -3,7 +3,8 @@
 // DropQR — améliorations propres à la version téléphone.
 // Les pages mobiles réutilisent upload.js / receive.js / dashboard.js (mêmes
 // identifiants HTML): ce fichier n'ajoute que les gestes « natifs »:
-//   - boutons Appareil photo / Galerie branchés sur le champ fichier principal;
+//   - boutons Appareil photo / Galerie branchés sur le champ fichier principal
+//     (ils s'ajoutent à la sélection, la Galerie accepte plusieurs fichiers);
 //   - partage natif (Web Share API) du lien créé ou reçu;
 //   - bouton Coller + extraction automatique du code depuis un lien DropQR;
 //   - défilement vers le résultat + petite vibration quand l'envoi est prêt;
@@ -45,17 +46,26 @@
     if (!form || !fileInput || form.dataset.mobileInit === '1') return;
     form.dataset.mobileInit = '1';
 
-    // Appareil photo / Galerie -> on recopie le fichier dans le champ principal
-    // puis on déclenche "change": upload.js fait le reste.
+    // Appareil photo / Galerie -> on ajoute les fichiers au champ principal
+    // puis on déclenche "change": upload.js fait le reste (plusieurs fichiers
+    // seront regroupés en .zip automatiquement).
     ['cameraInput', 'galleryInput'].forEach((id) => {
       const input = document.getElementById(id);
       if (!input) return;
       input.addEventListener('change', () => {
-        const file = input.files && input.files[0];
-        if (!file) return;
+        const picked = Array.from(input.files || []);
+        if (!picked.length) return;
         try {
           const transfer = new DataTransfer();
-          transfer.items.add(file);
+          const seen = new Set();
+          const keyOf = (file) => `${file.name}|${file.size}|${file.lastModified}`;
+          // On conserve la sélection déjà présente et on évite les doublons.
+          Array.from(fileInput.files || []).concat(picked).forEach((file) => {
+            const key = keyOf(file);
+            if (seen.has(key)) return;
+            seen.add(key);
+            transfer.items.add(file);
+          });
           fileInput.files = transfer.files;
           fileInput.dispatchEvent(new Event('change', { bubbles: true }));
         } catch (_error) {

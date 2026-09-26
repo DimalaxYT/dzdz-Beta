@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
   <title>Envoyer — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
 </head>
 <body>
   <header class="nv" id="nv">
@@ -31,7 +31,7 @@
       <div class="hero-main">
         <div class="page-code">02 / SEND</div>
         <h1>Déposer un fichier, ouvrir un passage.</h1>
-        <p class="lead">Choisis la durée, lance l'envoi et partage le code. Les morceaux partent en parallèle pour garder une progression fluide.</p>
+        <p class="lead">Choisis la durée, lance l'envoi et partage le code. Tous les formats sont acceptés (.zip, .rblx, .obj, images, vidéos…), et plusieurs fichiers partent regroupés dans une seule archive .zip.</p>
       </div>
       <div class="upload-stats" data-parallax data-speed="-.08" aria-label="Capacités d'envoi">
         <span><strong data-max-file-size>10 Go</strong>limite annoncée</span>
@@ -42,22 +42,25 @@
     <main class="app-grid">
       <section class="panel" aria-labelledby="uploadTitle">
         <div class="panel-head">
-          <div><h2 id="uploadTitle" class="panel-title">Nouveau transfert</h2><p class="panel-caption">Un fichier par passage. Le lien sera temporaire.</p></div>
+          <div><h2 id="uploadTitle" class="panel-title">Nouveau transfert</h2><p class="panel-caption">Un fichier, ou plusieurs regroupés en .zip. Le lien sera temporaire.</p></div>
           <span class="step-pill">Étape 01</span>
         </div>
         <div class="panel-body">
           <form id="uploadForm">
             <div id="dropzone" class="dropzone">
-              <input id="fileInput" class="file-input" name="file" type="file" required aria-label="Choisir un fichier">
+              <input id="fileInput" class="file-input" name="file" type="file" multiple required aria-label="Choisir un ou plusieurs fichiers">
               <div class="drop-inner">
                 <div class="upload-orb"><img src="/assets/upload-icon.svg?v=6" alt="" aria-hidden="true"></div>
-                <div class="drop-title" id="dropTitle">Déposer le fichier ici</div>
-                <p class="drop-subtitle" id="dropSubtitle">ou cliquer pour le choisir</p>
+                <div class="drop-title" id="dropTitle">Déposer le ou tes fichiers ici</div>
+                <p class="drop-subtitle" id="dropSubtitle">ou clique pour les choisir. Tous les formats acceptés : .zip, .rblx, .obj… tout.</p>
               </div>
             </div>
             <div id="fileChip" class="file-chip" aria-live="polite">
               <div class="file-icon"><img src="/assets/file-icon.svg?v=6" alt="" aria-hidden="true"></div>
-              <div class="file-chip-info"><div id="fileChipName" class="file-chip-name"></div><div id="fileChipSize" class="file-chip-size"></div></div>
+              <div class="file-chip-info">
+                <div class="file-chip-name-row"><div id="fileChipName" class="file-chip-name"></div><span id="fileChipExt" class="ext-pill" hidden></span></div>
+                <div id="fileChipSize" class="file-chip-size"></div>
+              </div>
               <button id="clearFile" class="clear-btn" type="button">Retirer</button>
             </div>
             <div class="settings">
@@ -126,6 +129,7 @@
   </div>
   <script src="/assets/site.js?v=16" defer></script>
   <script src="/assets/store.js?v=1" defer></script>
-  <script src="/assets/upload.js?v=17" defer></script>
+  <script src="/assets/zip.js?v=1" defer></script>
+  <script src="/assets/upload.js?v=18" defer></script>
 </body>
 </html>

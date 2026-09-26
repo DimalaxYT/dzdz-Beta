@@ -103,25 +103,78 @@ const initUploadPage = () => {
     return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
   }
 
-  function updateFileLabel() {
-    const file = fileInput.files[0];
-    const tooLarge = Boolean(file && maxFileSizeBytes && file.size > maxFileSizeBytes);
-    sendButton.disabled = !file || uploadInProgress || tooLarge;
+  // Tous les fichiers actuellement choisis (le champ fichier reste la source de
+  // vérité, y compris après glisser-déposer ou sélection multiple).
+  function selectionFiles() {
+    return Array.from((fileInput && fileInput.files) || []);
+  }
 
-    if (!file) {
+  function selectionTotalSize() {
+    return selectionFiles().reduce((sum, file) => sum + Number(file.size || 0), 0);
+  }
+
+  function plannedZipName() {
+    const stamp = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    const when = `${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}`;
+    return `DropQR-${when}.zip`;
+  }
+
+  function setFileChipExt(name) {
+    const extEl = document.getElementById('fileChipExt');
+    if (!extEl) return;
+    const ext = (window.DropQRZip && window.DropQRZip.extensionOf)
+      ? window.DropQRZip.extensionOf(name)
+      : String(name || '').split('.').pop().toLowerCase();
+    if (ext && ext.length <= 6) {
+      extEl.textContent = ext;
+      extEl.hidden = false;
+    } else {
+      extEl.hidden = true;
+    }
+  }
+
+  function updateFileLabel() {
+    const files = selectionFiles();
+    const totalSize = selectionTotalSize();
+    const packed = files.length > 1;
+    const tooLarge = Boolean(files.length && maxFileSizeBytes && totalSize > maxFileSizeBytes);
+    sendButton.disabled = !files.length || uploadInProgress || tooLarge;
+
+    if (!files.length) {
       // Version téléphone: pas de glisser-déposer, on parle de « toucher ».
       const isMobileView = document.documentElement.getAttribute('data-view') === 'mobile';
-      dropTitle.textContent = isMobileView ? 'Choisir un fichier' : 'Dépose ton fichier ici';
-      dropSubtitle.textContent = isMobileView ? 'Touche pour parcourir tes fichiers' : 'ou clique pour le choisir. Un seul fichier par transfert.';
+      dropTitle.textContent = isMobileView ? 'Choisir des fichiers' : 'Dépose ton ou tes fichiers ici';
+      dropSubtitle.textContent = isMobileView
+        ? 'Touche pour parcourir tes fichiers. Tous les formats : .zip, .rblx, .obj… tout.'
+        : 'ou clique pour les choisir. Tous les formats acceptés : .zip, .rblx, .obj… tout.';
+      setFileChipExt('');
       fileChip.classList.remove('visible');
       return;
     }
 
+    if (packed) {
+      // Plusieurs fichiers (ou dossiers) : regroupement automatique en .zip.
+      dropTitle.textContent = `${files.length} fichiers sélectionnés`;
+      dropSubtitle.textContent = `${formatBytes(totalSize)} · regroupés automatiquement en une seule archive .zip`;
+      fileChipName.textContent = plannedZipName();
+      fileChipSize.textContent = `${formatBytes(totalSize)} · ${files.length} fichiers · archive ZIP`;
+      setFileChipExt('zip');
+      fileChip.classList.add('visible');
+      if (tooLarge) {
+        dropSubtitle.textContent = `Lot trop volumineux. Limite actuelle : ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`;
+        setStatus(`Ce lot dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`, 'error');
+      }
+      return;
+    }
+
+    const file = files[0];
     const chunks = Math.max(1, Math.ceil(file.size / chunkSize));
     dropTitle.textContent = file.name;
     dropSubtitle.textContent = `${formatBytes(file.size)} · envoi rapide en ${chunks} morceau${chunks > 1 ? 'x' : ''}`;
     fileChipName.textContent = file.name;
     fileChipSize.textContent = `${formatBytes(file.size)} · ${uploadConcurrency} envois parallèles · morceaux de ${formatBytes(chunkSize)}`;
+    setFileChipExt(file.name);
     fileChip.classList.add('visible');
     if (tooLarge) {
       dropSubtitle.textContent = `Fichier trop volumineux. Limite actuelle : ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`;
@@ -157,7 +210,7 @@ const initUploadPage = () => {
 
       const notices = [];
       if (!chunkedUploadAvailable) {
-        notices.push('<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.11.0</code> et <code>chunkInit: true</code>.');
+        notices.push('<strong>Backend ancien détecté.</strong> Redéploie la dernière version et vérifie que <code>/api/health</code> affiche <code>version: 1.13.0</code> et <code>chunkInit: true</code>.');
       }
       if (config.sandboxWarning) {
         notices.push('<strong>Preview Arena détectée.</strong> Pour un vrai test mobile, utilise ton URL Railway ou Render.');
@@ -463,21 +516,40 @@ const initUploadPage = () => {
     });
   });
 
-  dropzone.addEventListener('drop', (event) => {
-    const file = event.dataTransfer.files[0];
-    if (!file || uploadInProgress) return;
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    fileInput.files = dataTransfer.files;
+  dropzone.addEventListener('drop', async (event) => {
+    event.preventDefault();
+    if (uploadInProgress) return;
+    const dataTransfer = event.dataTransfer;
+    if (!dataTransfer) return;
+    // collectEntries conserve les chemins de dossiers et accepte tout type
+    // de fichier (.zip, .rblx, .obj, images, vidéos…).
+    let entries = [];
+    try {
+      entries = (window.DropQRZip && window.DropQRZip.collectEntries)
+        ? await window.DropQRZip.collectEntries(dataTransfer)
+        : Array.from(dataTransfer.files || []).map((file) => ({ name: file.name, data: file }));
+    } catch (_error) {
+      entries = Array.from(dataTransfer.files || []).map((file) => ({ name: file.name, data: file }));
+    }
+    if (!entries.length) return;
+    const transfer = new DataTransfer();
+    entries.forEach((entry) => {
+      try { transfer.items.add(entry.data); } catch (_error) {}
+    });
+    fileInput.files = transfer.files;
     updateFileLabel();
+    if (entries.length > 1) {
+      setStatus(`${entries.length} éléments reçus (fichiers et dossiers) : ils partiront regroupés dans un seul .zip.`, '');
+    }
   });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const file = fileInput.files[0];
-    if (!file || uploadInProgress) return;
-    if (maxFileSizeBytes && file.size > maxFileSizeBytes) {
-      setStatus(`Ce fichier dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`, 'error');
+    const files = selectionFiles();
+    if (!files.length || uploadInProgress) return;
+    const totalSize = selectionTotalSize();
+    if (maxFileSizeBytes && totalSize > maxFileSizeBytes) {
+      setStatus(`${files.length > 1 ? 'Ce lot' : 'Ce fichier'} dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`, 'error');
       return;
     }
 
@@ -486,14 +558,34 @@ const initUploadPage = () => {
     currentDeleteKey = null;
     sandboxWarning.classList.add('hidden');
     emptyState.style.display = 'grid';
-    setStatus('Upload en cours… garde cette page ouverte.');
     uploadInProgress = true;
     sendButton.disabled = true;
     clearFile.disabled = true;
-    progressLabel.textContent = 'Préparation';
-    setProgress(0, 0, file.size, `Préparation des morceaux de ${formatBytes(chunkSize)}…`);
 
     try {
+      // Un seul fichier : envoyé tel quel (.zip, .rblx, .obj, image, vidéo…).
+      // Plusieurs fichiers/dossiers : regroupés d'abord en une archive .zip.
+      let file = files[0];
+      if (files.length > 1) {
+        if (!window.DropQRZip) throw new Error('Module .zip indisponible. Recharge la page et réessaie.');
+        setStatus('Création du .zip…');
+        progressLabel.textContent = 'Création du .zip';
+        setProgress(0, 0, totalSize, `Regroupement de ${files.length} fichiers…`);
+        const entries = window.DropQRZip.entriesFromFiles(files);
+        file = await window.DropQRZip.makeZipFile(entries, plannedZipName(), {
+          onProgress: (processed, total) => {
+            setProgress(total ? (processed / total) * 100 : 0, processed, total, `Regroupement en .zip · ${formatBytes(processed)} / ${formatBytes(total)}`);
+          }
+        });
+      }
+      if (maxFileSizeBytes && file.size > maxFileSizeBytes) {
+        throw new Error(`L'archive .zip dépasse la limite de ${maxFileSizeHuman || formatBytes(maxFileSizeBytes)}.`);
+      }
+
+      setStatus('Upload en cours… garde cette page ouverte.');
+      progressLabel.textContent = 'Préparation';
+      setProgress(0, 0, file.size, `Préparation des morceaux de ${formatBytes(chunkSize)}…`);
+
       let payload;
       if (!backendReachable) throw new Error('Backend API indisponible sur ce domaine.');
       if (chunkedUploadAvailable && file.size > 0) {
@@ -527,7 +619,7 @@ const initUploadPage = () => {
       uploadInProgress = false;
       currentUploadToken = null;
       clearFile.disabled = false;
-      sendButton.disabled = !fileInput.files[0];
+      sendButton.disabled = !selectionFiles().length;
     }
   });
 

@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#08090b">
   <meta name="color-scheme" content="dark">
   <title>Aide — DropQR</title>
-  <link rel="stylesheet" href="/assets/pages.css?v=3">
+  <link rel="stylesheet" href="/assets/pages.css?v=4">
 </head>
 <body>
   <header class="nv" id="nv">
@@ -35,11 +35,13 @@
 
     <main class="docs-grid">
       <nav class="docs-nav" aria-label="Sommaire">
-        <a href="#envoyer">Envoyer un fichier</a><a href="#recevoir">Recevoir un fichier</a><a href="#limites">Limites de taille</a><a href="#suppression">Suppression auto</a><a href="#video">Vidéos</a>
+        <a href="#envoyer">Envoyer un fichier</a><a href="#formats">Formats acceptés</a><a href="#recevoir">Recevoir un fichier</a><a href="#limites">Limites de taille</a><a href="#suppression">Suppression auto</a><a href="#video">Vidéos</a>
       </nav>
 
       <div class="doc-section">
-        <section id="envoyer" class="card"><h2>Envoyer un fichier</h2><p>Pour transférer un document :</p><ol><li>Rendez-vous sur la page <strong>Envoyer</strong>.</li><li>Sélectionnez un ou plusieurs fichiers depuis votre appareil (ordinateur, tablette ou téléphone).</li><li>Configurez si besoin la durée d'expiration (de 15 minutes à 24 heures).</li><li>Choisissez si le fichier doit être supprimé <em>immédiatement</em> après le premier téléchargement.</li><li>Cliquez sur Envoyer. Une fois terminé, vous obtiendrez un QR Code et un code court.</li></ol></section>
+        <section id="envoyer" class="card"><h2>Envoyer un fichier</h2><p>Pour transférer un document :</p><ol><li>Rendez-vous sur la page <strong>Envoyer</strong>.</li><li>Sélectionnez un ou plusieurs fichiers depuis votre appareil (ordinateur, tablette ou téléphone). Si vous en choisissez plusieurs, ils seront automatiquement regroupés dans une archive <strong>.zip</strong> avant l'envoi.</li><li>Configurez si besoin la durée d'expiration (de 15 minutes à 24 heures).</li><li>Choisissez si le fichier doit être supprimé <em>immédiatement</em> après le premier téléchargement.</li><li>Cliquez sur Envoyer. Une fois terminé, vous obtiendrez un QR Code et un code court.</li></ol></section>
+
+        <section id="formats" class="card"><h2>Quels formats sont acceptés ?</h2><p><strong>Tous.</strong> Aucune restriction de type de fichier : archives <strong>.zip</strong>, fichiers Roblox <strong>.rblx</strong>, modèles 3D <strong>.obj</strong>, images, vidéos, audio, documents… tout passe.</p><ul><li>Un fichier est envoyé tel quel, avec son nom et son extension d'origine.</li><li>Plusieurs fichiers (ou un dossier glissé-déposé sur ordinateur) sont regroupés dans une archive <strong>.zip</strong> créée dans votre navigateur, puis envoyés comme un seul transfert.</li><li>Sur téléphone, les boutons <em>Appareil photo</em> et <em>Galerie</em> servent aux images et vidéos ; utilisez le bouton principal pour les autres fichiers (.zip, .rblx, .obj, etc.), autant que vous voulez.</li></ul></section>
 
         <section id="recevoir" class="card"><h2>Recevoir un fichier</h2><p>Le destinataire a deux options très simples :</p><ol><li><strong>Scanner le QR Code :</strong> il suffit d'utiliser l'appareil photo du téléphone pour être redirigé vers la page de téléchargement direct.</li><li><strong>Utiliser le Code court :</strong> le destinataire se rend sur la page <strong>Recevoir</strong> et saisit le code (ex: Q7R-4M2) qui lui a été communiqué à l'oral ou par message.</li></ol></section>
 

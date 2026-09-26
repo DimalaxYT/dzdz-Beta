@@ -1040,6 +1040,22 @@ import * as THREE from '/assets/vendor/three.module.min.js';
 
   /* ---- drag & drop fenêtre entière ---- */
   const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+
+  // Plusieurs fichiers/dossiers -> une archive .zip ; un seul fichier -> tel quel.
+  // Tous les formats sont acceptés (.zip, .rblx, .obj, images, vidéos…).
+  async function prepareUploadFile(entries) {
+    const list = (entries || []).filter(Boolean);
+    if (!list.length) return null;
+    if (list.length === 1 || !window.DropQRZip) return list[0].data || list[0];
+    const total = list.reduce((sum, entry) => sum + Number((entry.data || entry).size || 0), 0);
+    toast(`Regroupement de ${list.length} fichiers en .zip…`);
+    if (upStatus) upStatus.textContent = `Packing ${list.length} files into one .zip…`;
+    return window.DropQRZip.makeZipFile(list, `DropQR-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}.zip`, {
+      onProgress: (processed) => {
+        if (upStatus) upStatus.textContent = `Packing .zip · ${humanSize(processed)} / ${humanSize(total)}`;
+      }
+    });
+  }
   window.addEventListener('dragenter', (e) => {
     if (!hasFiles(e) || state.uploading) return;
     e.preventDefault();
@@ -1058,29 +1074,43 @@ import * as THREE from '/assets/vendor/three.module.min.js';
       if (dz) { dz.classList.remove('dragging'); if (dzTitle) dzTitle.textContent = 'Drop anything here'; if (dzSub) dzSub.textContent = 'or choose files'; }
     }
   });
-  window.addEventListener('drop', (e) => {
+  window.addEventListener('drop', async (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
     state.dragDepth = 0; state.dragging = false;
     if (veil) veil.classList.remove('on');
     if (dz) { dz.classList.remove('dragging'); if (dzTitle) dzTitle.textContent = 'Drop anything here'; if (dzSub) dzSub.textContent = 'or choose files'; }
-    const files = e.dataTransfer && e.dataTransfer.files;
-    if (files && files.length) {
-      if (files.length > 1) toast('First file used — one transfer at a time.');
-      window.scrollTo({ top: 0, behavior: 'auto' });
-      startUpload(files[0]);
+    if (state.uploading) return;
+    let entries = [];
+    try {
+      entries = (window.DropQRZip && window.DropQRZip.collectEntries)
+        ? await window.DropQRZip.collectEntries(e.dataTransfer)
+        : Array.from((e.dataTransfer && e.dataTransfer.files) || []).map((file) => ({ name: file.name, data: file }));
+    } catch (_error) {
+      entries = Array.from((e.dataTransfer && e.dataTransfer.files) || []).map((file) => ({ name: file.name, data: file }));
     }
+    if (!entries.length) return;
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    const file = await prepareUploadFile(entries);
+    if (file) startUpload(file);
   });
   if (dz) {
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.hidden = true;
     dz.appendChild(input);
     dz.addEventListener('click', () => { if (!state.uploading) input.click(); });
     dz.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !state.uploading) { e.preventDefault(); input.click(); } });
-    input.addEventListener('change', () => {
-      if (input.files && input.files.length) startUpload(input.files[0]);
+    input.addEventListener('change', async () => {
+      const files = Array.from((input.files && input.files.length) ? input.files : []);
       input.value = '';
+      if (!files.length || state.uploading) return;
+      const entries = (window.DropQRZip && window.DropQRZip.entriesFromFiles)
+        ? window.DropQRZip.entriesFromFiles(files)
+        : files.map((file) => ({ name: file.name, data: file }));
+      const file = await prepareUploadFile(entries);
+      if (file) startUpload(file);
     });
     // approche du curseur : la scène « respire » vers la zone
     dz.addEventListener('pointerenter', () => { dz.classList.add('near'); if (dzTitle && !state.dragging) dzTitle.textContent = 'Drop your files'; pointer.nearDz = true; });
@@ -1480,6 +1510,19 @@ import * as THREE from '/assets/vendor/three.module.min.js';
       };
       go();
     }
+    // Plusieurs fichiers/dossiers -> archive .zip ; un seul fichier -> tel quel.
+    async function prepareFlatFile(items) {
+      const list = (items || []).filter(Boolean);
+      if (!list.length) return null;
+      if (list.length === 1 || !window.DropQRZip) return list[0].data || list[0];
+      const total = list.reduce((sum, entry) => sum + Number((entry.data || entry).size || 0), 0);
+      if (upSt) upSt.textContent = `Packing ${list.length} files into one .zip…`;
+      return window.DropQRZip.makeZipFile(list, `DropQR-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}.zip`, {
+        onProgress: (processed) => {
+          if (upSt) upSt.textContent = `Packing .zip · ${Math.round((processed / Math.max(total, 1)) * 100)}%`;
+        }
+      });
+    }
     function doUpload(file) {
       if (busy || !file) return;
       busy = true;
@@ -1518,16 +1561,33 @@ import * as THREE from '/assets/vendor/three.module.min.js';
     if (again) again.addEventListener('click', () => { resOv && resOv.classList.remove('on'); });
     if (dzEl) {
       const input = document.createElement('input');
-      input.type = 'file'; input.hidden = true;
+      input.type = 'file'; input.multiple = true; input.hidden = true;
       dzEl.appendChild(input);
       dzEl.addEventListener('click', () => input.click());
-      input.addEventListener('change', () => { if (input.files.length) doUpload(input.files[0]); input.value = ''; });
+      input.addEventListener('change', async () => {
+        const files = Array.from((input.files && input.files.length) ? input.files : []);
+        input.value = '';
+        if (!files.length || busy) return;
+        const entries = (window.DropQRZip && window.DropQRZip.entriesFromFiles)
+          ? window.DropQRZip.entriesFromFiles(files)
+          : files.map((file) => ({ name: file.name, data: file }));
+        doUpload(await prepareFlatFile(entries));
+      });
     }
     window.addEventListener('dragover', (e) => e.preventDefault());
-    window.addEventListener('drop', (e) => {
+    window.addEventListener('drop', async (e) => {
       e.preventDefault();
-      const f = e.dataTransfer && e.dataTransfer.files;
-      if (f && f.length) doUpload(f[0]);
+      if (busy) return;
+      let entries = [];
+      try {
+        entries = (window.DropQRZip && window.DropQRZip.collectEntries)
+          ? await window.DropQRZip.collectEntries(e.dataTransfer)
+          : Array.from((e.dataTransfer && e.dataTransfer.files) || []).map((file) => ({ name: file.name, data: file }));
+      } catch (_error) {
+        entries = Array.from((e.dataTransfer && e.dataTransfer.files) || []).map((file) => ({ name: file.name, data: file }));
+      }
+      const file = await prepareFlatFile(entries);
+      if (file) doUpload(file);
     });
     // auth slot (identique, version légère)
     (async () => {
