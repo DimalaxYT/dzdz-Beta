@@ -955,3 +955,120 @@ h1.small-title { font-size: clamp(34px, 5vw, 56px); }
   .panel-head, .panel-body { padding-left: 18px; padding-right: 18px; }
   .actions > *, .action-row > * { width: 100%; }
 }
+
+/* ===== PWA : bouton "Télécharger l'app" + overlay d'aide ===== */
+.pwa-install-nav {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 13.5px;
+  border-radius: 999px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.pwa-install-nav.installed {
+  background: var(--surface-2);
+  color: var(--green);
+  border-color: var(--border);
+  box-shadow: none;
+  cursor: default;
+  opacity: 1;
+}
+
+#pwa-help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .45);
+  backdrop-filter: blur(3px);
+}
+
+.pwa-help-card {
+  width: min(460px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px 24px 24px;
+  color: var(--text);
+}
+
+.pwa-help-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pwa-help-head img { width: 28px; height: 28px; }
+
+.pwa-help-head h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.pwa-help-close {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pwa-help-close:hover { color: var(--text); background: var(--surface-3); }
+
+.pwa-help-lead {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.pwa-help-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.pwa-help-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.pwa-step-num {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #edf7fd;
+  border: 1px solid #cfe8f7;
+  color: #236b9c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pwa-kbd { color: var(--muted-2); font-size: 12.5px; }
+
+.pwa-help-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 13px;
+}
