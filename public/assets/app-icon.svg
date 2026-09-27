@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DropQR">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eaf4fc"/>
+    </linearGradient>
+    <linearGradient id="g" x1="90" y1="70" x2="420" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#12B9E8"/>
+      <stop offset=".52" stop-color="#2D78F1"/>
+      <stop offset="1" stop-color="#7037E8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g transform="translate(64 64) scale(4)">
+    <path d="M27 70.5h-4C12.5 70.5 6 62.9 6 53.8c0-8.1 5.4-15.2 13.2-17.4C21 25 31.7 17 44.5 17c12.1 0 22.5 7.2 27 17.6C79.2 35.3 87 42.8 87 52.8c0 9.8-7.9 17.7-17.7 17.7h-2.8" stroke="url(#g)" stroke-width="9" stroke-linecap="round"/>
+    <path d="M48 60V43m0 0-7 7m7-7 7 7" stroke="url(#g)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M28 61h9v9h-9v-9Zm15 0h9v9h-9v-9Zm-15 15h9v9h-9v-9Zm15 0h9v9h-9v-9Zm15-15h7v7h-7v-7Z" fill="#172033" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M77 22h12M82 31h9M87 40h5" stroke="url(#g)" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

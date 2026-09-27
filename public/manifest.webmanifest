@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "DropQR — transfert de fichiers",
+  "short_name": "DropQR",
+  "description": "Envoie et reçois des fichiers avec un lien temporaire et un QR code.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f8fb",
+  "theme_color": "#168bd3",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/assets/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/app-icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

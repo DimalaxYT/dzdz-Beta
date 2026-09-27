@@ -596,6 +596,11 @@ function sendPage(res, fileName) {
   return res.sendFile(path.join(PUBLIC_DIR, fileName));
 }
 
+app.get('/manifest.webmanifest', (_req, res) => {
+  res.type('application/manifest+json');
+  return res.sendFile(path.join(PUBLIC_DIR, 'manifest.webmanifest'));
+});
+
 app.get('/', (_req, res) => sendPage(res, 'home.html'));
 app.get('/upload', (_req, res) => sendPage(res, 'upload.html'));
 app.get('/dashboard', (_req, res) => sendPage(res, 'dashboard.html'));
